@@ -177,7 +177,12 @@ client.on('interactionCreate', async interaction => {
   const { commandName, options, guild, user } = interaction;
   
   try {
-    await interaction.deferReply({ ephemeral: commandName === 'panelvendeur' });
+    // Déferrer immédiatement pour éviter le timeout
+    if (commandName === 'panelvendeur') {
+      await interaction.deferReply({ flags: 64 });
+    } else {
+      await interaction.deferReply();
+    }
     
     // ─── CATALOGUE ─────────────────────────────────────────────────────────────
     if (commandName === 'catalogue') {
