@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RP Shop — Boutique & Suivi</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#0b0f14;color:#e0e0e0;font-family:'Segoe UI',sans-serif;min-height:100vh;padding:20px}
+    .container{max-width:1200px;margin:0 auto}
+    
+    /* Header */
+    .header{display:flex;justify-content:space-between;align-items:center;margin-bottom:30px;flex-wrap:wrap;gap:15px}
+    .brand h1{color:#ff4757;font-size:32px}.brand span{color:#fff}.brand p{color:#4a5568;font-size:14px;margin-top:5px}
+    
+    /* Tabs */
+    .tabs{display:flex;gap:5px;margin-bottom:25px}
+    .tab{padding:12px 25px;background:#1a1f2a;border:none;color:#e0e0e0;cursor:pointer;border-radius:8px 8px 0 0;font-size:15px;font-weight:500;transition:all 0.2s}
+    .tab.active{background:#5352ed;color:#fff}
+    .tab:hover:not(.active){background:#1e2535}
+    
+    /* Search */
+    .search-box{display:flex;gap:10px;margin-bottom:25px;align-items:center}
+    .search-box input{flex:1;padding:14px 18px;background:#1a1f2a;border:1px solid #1e2535;border-radius:8px;color:#fff;font-size:15px;outline:none}
+    .search-box input:focus{border-color:#5352ed}
+    .search-box input::placeholder{color:#4a5568}
+    .search-box button{padding:14px 25px;background:#5352ed;border:none;border-radius:8px;color:#fff;font-weight:bold;cursor:pointer;font-size:15px}
+    .search-box select{padding:14px 18px;background:#1a1f2a;border:1px solid #1e2535;border-radius:8px;color:#fff;font-size:15px;outline:none;min-width:200px}
+    
+    /* Cards */
+    .card{background:#141a24;border:1px solid #1e2535;border-radius:12px;padding:25px;margin-bottom:20px}
+    .card-title{font-size:18px;font-weight:600;margin-bottom:20px;color:#a29bfe;display:flex;align-items:center;gap:10px}
+    
+    /* Catalogue */
+    .catalogue-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
+    .product-card{background:#1a1f2a;border:1px solid #1e2535;border-radius:10px;overflow:hidden;transition:transform 0.2s,box-shadow 0.2s}
+    .product-card:hover{transform:translateY(-3px);box-shadow:0 10px 30px rgba(0,0,0,0.3);border-color:#5352ed}
+    .product-image{width:100%;height:160px;background:#0b0f14;display:flex;align-items:center;justify-content:center;font-size:50px}
+    .product-image img{width:100%;height:100%;object-fit:cover}
+    .product-info{padding:18px}
+    .product-name{font-size:18px;font-weight:700;margin-bottom:5px}
+    .product-category{display:inline-block;background:#1e2535;padding:3px 10px;border-radius:20px;font-size:11px;color:#a29bfe;margin-bottom:10px}
+    .product-desc{font-size:13px;color:#8a9aa8;margin-bottom:15px;line-height:1.5}
+    .product-price{font-size:22px;font-weight:700;color:#ffd32a;margin-bottom:15px}
+    .product-price small{font-size:13px;color:#4a5568;font-weight:normal}
+    .product-actions{display:flex;gap:10px}
+    .product-actions input{width:70px;padding:10px;background:#0b0f14;border:1px solid #1e2535;border-radius:6px;color:#fff;text-align:center}
+    .product-actions button{flex:1;padding:10px;background:#5352ed;border:none;border-radius:6px;color:#fff;font-weight:bold;cursor:pointer;font-size:13px}
+    .product-actions button:hover{opacity:0.9}
+    
+    /* Orders */
+    .order-card{background:#1a1f2a;border:1px solid #1e2535;border-radius:10px;padding:20px;margin-bottom:15px}
+    .order-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;flex-wrap:wrap;gap:10px}
+    .order-id{font-family:monospace;font-size:14px;color:#a29bfe}
+    .order-date{font-size:12px;color:#4a5568}
+    .status{display:inline-block;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:bold;text-transform:uppercase}
+    .status.en_attente{background:#ffd32a22;color:#ffd32a}
+    .status.validee{background:#2ed57322;color:#2ed573}
+    .status.livree{background:#5352ed22;color:#a29bfe}
+    .status.refusee{background:#ff475722;color:#ff4757}
+    .order-items{font-size:15px;margin-bottom:10px}
+    .order-details{font-size:13px;color:#8a9aa8;margin-top:10px;padding-top:10px;border-top:1px solid #1e2535}
+    
+    /* Modal */
+    .modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px}
+    .modal-content{background:#141a24;border-radius:12px;padding:30px;max-width:500px;width:100%;max-height:90vh;overflow-y:auto}
+    .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+    .modal-title{font-size:20px;font-weight:700;color:#fff}
+    .modal-close{background:none;border:none;color:#4a5568;font-size:24px;cursor:pointer}
+    .modal-close:hover{color:#fff}
+    .form-group{margin-bottom:20px}
+    .form-group label{display:block;margin-bottom:8px;color:#a29bfe;font-size:13px;font-weight:500}
+    .form-group input,.form-group textarea,.form-group select{width:100%;padding:14px;background:#1a1f2a;border:1px solid #1e2535;border-radius:8px;color:#fff;font-size:15px;outline:none;font-family:inherit}
+    .form-group textarea{resize:vertical;min-height:80px}
+    .modal-actions{display:flex;gap:10px;justify-content:flex-end;margin-top:25px}
+    
+    /* Empty */
+    .empty{text-align:center;padding:50px 20px;color:#4a5568}
+    .empty-icon{font-size:60px;margin-bottom:15px;opacity:0.5}
+    
+    /* Toast */
+    .toast{position:fixed;bottom:20px;right:20px;padding:15px 25px;background:#141a24;border:1px solid #1e2535;border-radius:8px;color:#fff;z-index:9999;animation:slideIn 0.3s}
+    .toast.success{border-left:4px solid #2ed573}
+    .toast.error{border-left:4px solid #ff4757}
+    @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+    
+    /* Info box */
+    .info-box{background:#5352ed22;border:1px solid #5352ed44;border-radius:8px;padding:15px;margin-bottom:25px;font-size:14px}
+    .info-box strong{color:#a29bfe}
+    
+    .footer{text-align:center;margin-top:30px;color:#4a5568;font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="brand">
+        <h1>RP<span>Shop</span></h1>
+        <p>Boutique & Suivi de commandes</p>
+      </div>
+      <div id="user-info" style="display:none">
+        <span style="color:#a29bfe">👤 <span id="user-id-display"></span></span>
+        <button onclick="logout()" style="margin-left:15px;padding:8px 15px;background:#1a1f2a;border:1px solid #1e2535;border-radius:6px;color:#ff4757;cursor:pointer">Changer</button>
+      </div>
+    </div>
+    
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" onclick="showTab('catalogue')">🛍️ Catalogue</button>
+      <button class="tab" onclick="showTab('suivi')">📋 Mes commandes</button>
+    </div>
+    
+    <!-- Onglet Catalogue -->
+    <div id="tab-catalogue">
+      <div class="search-box">
+        <input type="text" id="search-catalogue" placeholder="🔍 Rechercher un article...">
+        <select id="filter-category">
+          <option value="">Toutes les catégories</option>
+        </select>
+        <button onclick="loadCatalogue()">🔄 Actualiser</button>
+      </div>
+      
+      <div class="info-box">
+        <strong>🛒 Comment commander ?</strong><br>
+        1. Choisissez vos articles et quantités<br>
+        2. Entrez votre ID Discord (trouvable dans Paramètres → Avancé → Mode Développeur)<br>
+        3. Cliquez sur "Passer la commande"
+      </div>
+      
+      <div id="catalogue-container"></div>
+    </div>
+    
+    <!-- Onglet Suivi -->
+    <div id="tab-suivi" style="display:none">
+      <div class="search-box">
+        <input type="text" id="discord-id-search" placeholder="Votre ID Discord (ex: 123456789012345678)">
+        <button onclick="searchOrders()">🔍 Voir mes commandes</button>
+      </div>
+      
+      <div id="orders-container"></div>
+    </div>
+    
+    <div class="footer">
+      <p>💡 ID Discord : Paramètres → Avancé → Mode Développeur → Clic droit sur votre profil → Copier l'ID</p>
+      <p style="margin-top:8px">🛡️ RP Shop — Service de commandes</p>
+    </div>
+  </div>
+  
+  <!-- Modal Commande -->
+  <div id="order-modal" class="modal" style="display:none">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title">🛒 Passer commande</div>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+      
+      <div id="modal-items-summary" style="margin-bottom:20px"></div>
+      
+      <div class="form-group">
+        <label>📱 Votre ID Discord *</label>
+        <input type="text" id="order-discord-id" placeholder="123456789012345678">
+        <small style="color:#4a5568;display:block;margin-top:5px">Paramètres Discord → Avancé → Mode Développeur</small>
+      </div>
+      
+      <div class="form-group">
+        <label>📝 Précisions / Détails supplémentaires (optionnel)</label>
+        <textarea id="order-details" placeholder="Ex: Couleur préférée, modèle souhaité..."></textarea>
+      </div>
+      
+      <div class="modal-actions">
+        <button onclick="closeModal()" style="padding:12px 20px;background:#1a1f2a;border:1px solid #1e2535;border-radius:8px;color:#fff;cursor:pointer">Annuler</button>
+        <button onclick="submitOrder()" style="padding:12px 25px;background:#2ed573;border:none;border-radius:8px;color:#000;font-weight:bold;cursor:pointer">✅ Confirmer la commande</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const guildId = new URLSearchParams(location.search).get('guild') || '';
+    let cart = [];
+    let catalogueItems = [];
+    let categories = new Set();
+    let currentDiscordId = localStorage.getItem('rp_discord_id') || '';
+    
+    // Init
+    if (currentDiscordId) {
+      document.getElementById('user-info').style.display = 'block';
+      document.getElementById('user-id-display').textContent = currentDiscordId;
+    }
+    
+    async function init() {
+      await loadCatalogue();
+      if (currentDiscordId) {
+        document.getElementById('discord-id-search').value = currentDiscordId;
+      }
+    }
+    
+    function logout() {
+      localStorage.removeItem('rp_discord_id');
+      currentDiscordId = '';
+      document.getElementById('user-info').style.display = 'none';
+      document.getElementById('discord-id-search').value = '';
+      document.getElementById('orders-container').innerHTML = '';
+    }
+    
+    function showTab(tab) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('[id^="tab-"]').forEach(t => t.style.display = 'none');
+      
+      if (tab === 'catalogue') {
+        document.querySelector('.tab:first-child').classList.add('active');
+        document.getElementById('tab-catalogue').style.display = 'block';
+      } else {
+        document.querySelector('.tab:last-child').classList.add('active');
+        document.getElementById('tab-suivi').style.display = 'block';
+        if (currentDiscordId) {
+          searchOrders();
+        }
+      }
+    }
+    
+    // ─── CATALOGUE ─────────────────────────────────────────────────────────────
+    async function loadCatalogue() {
+      const container = document.getElementById('catalogue-container');
+      container.innerHTML = '<div class="empty"><div class="empty-icon">⏳</div>Chargement...</div>';
+      
+      try {
+        const res = await fetch(`/api/public/shop/${guildId}`);
+        catalogueItems = await res.json();
+        
+        // Extraire les catégories
+        categories.clear();
+        catalogueItems.forEach(item => {
+          if (item.categorie) categories.add(item.categorie);
+        });
+        
+        // Remplir le filtre
+        const filterSelect = document.getElementById('filter-category');
+        filterSelect.innerHTML = '<option value="">Toutes les catégories</option>';
+        [...categories].sort().forEach(cat => {
+          filterSelect.innerHTML += `<option value="${cat}">${cat}</option>`;
+        });
+        
+        renderCatalogue(catalogueItems);
+      } catch (e) {
+        container.innerHTML = '<div class="empty"><div class="empty-icon">❌</div>Erreur de chargement</div>';
+      }
+    }
+    
+    function renderCatalogue(items) {
+      const container = document.getElementById('catalogue-container');
+      const searchTerm = document.getElementById('search-catalogue').value.toLowerCase();
+      const filterCat = document.getElementById('filter-category').value;
+      
+      let filtered = items;
+      if (searchTerm) {
+        filtered = filtered.filter(i => 
+          i.nom.toLowerCase().includes(searchTerm) || 
+          (i.description || '').toLowerCase().includes(searchTerm)
+        );
+      }
+      if (filterCat) {
+        filtered = filtered.filter(i => i.categorie === filterCat);
+      }
+      
+      if (filtered.length === 0) {
+        container.innerHTML = '<div class="empty"><div class="empty-icon">📦</div>Aucun article trouvé</div>';
+        return;
+      }
+      
+      container.innerHTML = `<div class="catalogue-grid">` + filtered.map(item => {
+        const inCart = cart.find(c => c.id === item.id);
+        const quantity = inCart ? inCart.quantite : 1;
+        const priceDisplay = item.prix ? `<div class="product-price">${item.prix} <small>💰</small></div>` : '';
+        
+        return `
+          <div class="product-card">
+            <div class="product-image">
+              ${item.image ? `<img src="${item.image}" alt="${item.nom}">` : '📦'}
+            </div>
+            <div class="product-info">
+              <div class="product-name">${item.nom}</div>
+              <span class="product-category">${item.categorie || 'Autre'}</span>
+              <div class="product-desc">${item.description || 'Aucune description'}</div>
+              ${priceDisplay}
+              <div class="product-actions">
+                <input type="number" id="qty-${item.id}" value="${quantity}" min="1" max="99" style="width:70px">
+                <button onclick="addToCart('${item.id}', '${item.nom}')">🛒 Ajouter</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('') + `</div>`;
+    }
+    
+    function addToCart(id, nom) {
+      const qtyInput = document.getElementById(`qty-${id}`);
+      const quantite = parseInt(qtyInput.value) || 1;
+      
+      const existing = cart.find(c => c.id === id);
+      if (existing) {
+        existing.quantite = quantite;
+      } else {
+        const item = catalogueItems.find(i => i.id === id);
+        cart.push({ id, nom, quantite, item });
+      }
+      
+      showToast(`✅ ${quantite}x ${nom} ajouté au panier`, 'success');
+      updateCartDisplay();
+    }
+    
+    function updateCartDisplay() {
+      // Optionnel : afficher un compteur de panier
+    }
+    
+    function openOrderModal() {
+      if (cart.length === 0) {
+        showToast('🛒 Votre panier est vide', 'error');
+        return;
+      }
+      
+      const summary = document.getElementById('modal-items-summary');
+      summary.innerHTML = `
+        <div style="background:#1a1f2a;padding:15px;border-radius:8px">
+          <strong style="color:#a29bfe">📦 Articles sélectionnés :</strong>
+          <ul style="margin-top:10px;list-style:none">
+            ${cart.map(c => `<li style="padding:5px 0">• ${c.quantite}x ${c.nom}</li>`).join('')}
+          </ul>
+        </div>
+      `;
+      
+      if (currentDiscordId) {
+        document.getElementById('order-discord-id').value = currentDiscordId;
+      }
+      
+      document.getElementById('order-modal').style.display = 'flex';
+    }
+    
+    function closeModal() {
+      document.getElementById('order-modal').style.display = 'none';
+    }
+    
+    async function submitOrder() {
+      const discordId = document.getElementById('order-discord-id').value.trim();
+      const details = document.getElementById('order-details').value.trim();
+      
+      if (!discordId) {
+        showToast('❌ Votre ID Discord est requis', 'error');
+        return;
+      }
+      
+      if (!/^\d{17,19}$/.test(discordId)) {
+        showToast('❌ ID Discord invalide (17-19 chiffres)', 'error');
+        return;
+      }
+      
+      if (cart.length === 0) {
+        showToast('❌ Votre panier est vide', 'error');
+        return;
+      }
+      
+      // Sauvegarder l'ID
+      localStorage.setItem('rp_discord_id', discordId);
+      currentDiscordId = discordId;
+      document.getElementById('user-info').style.display = 'block';
+      document.getElementById('user-id-display').textContent = discordId;
+      
+      const orderData = {
+        guildId,
+        userId: discordId,
+        items: cart.map(c => ({ itemId: c.id, nom: c.nom, quantite: c.quantite })),
+        details: details || null
+      };
+      
+      try {
+        const res = await fetch('/api/public/orders', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderData)
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+          throw new Error(data.error || 'Erreur');
+        }
+        
+        showToast(`✅ Commande ${data.orderId} enregistrée !`, 'success');
+        cart = [];
+        closeModal();
+        
+        // Rediriger vers le suivi
+        showTab('suivi');
+        document.getElementById('discord-id-search').value = discordId;
+        await searchOrders();
+        
+      } catch (e) {
+        showToast('❌ ' + e.message, 'error');
+      }
+    }
+    
+    // ─── SUIVI ─────────────────────────────────────────────────────────────────
+    async function searchOrders() {
+      const discordId = document.getElementById('discord-id-search').value.trim();
+      const container = document.getElementById('orders-container');
+      
+      if (!discordId) {
+        container.innerHTML = '<div class="empty"><div class="empty-icon">🔍</div>Entrez votre ID Discord</div>';
+        return;
+      }
+      
+      if (!/^\d{17,19}$/.test(discordId)) {
+        container.innerHTML = '<div class="empty"><div class="empty-icon">❌</div>ID Discord invalide</div>';
+        return;
+      }
+      
+      localStorage.setItem('rp_discord_id', discordId);
+      currentDiscordId = discordId;
+      document.getElementById('user-info').style.display = 'block';
+      document.getElementById('user-id-display').textContent = discordId;
+      
+      container.innerHTML = '<div class="empty"><div class="empty-icon">⏳</div>Chargement...</div>';
+      
+      try {
+        const res = await fetch(`/api/public/orders/${discordId}?guild=${guildId}`);
+        const orders = await res.json();
+        
+        if (!orders || orders.length === 0) {
+          container.innerHTML = '<div class="empty"><div class="empty-icon">📭</div>Aucune commande trouvée</div>';
+          return;
+        }
+        
+        const statusLabels = {
+          'en_attente': '🟡 En attente',
+          'validee': '🟢 Validée',
+          'livree': '✅ Livrée',
+          'refusee': '🔴 Refusée'
+        };
+        
+        let html = '';
+        orders.forEach(order => {
+          const items = order.items.map(i => `${i.quantite}x ${i.nom}`).join(', ');
+          const date = new Date(order.createdAt).toLocaleDateString('fr-FR', {
+            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+          });
+          
+          html += `
+            <div class="order-card">
+              <div class="order-header">
+                <span class="order-id">📦 ${order.orderId}</span>
+                <span class="order-date">${date}</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;align-items:center">
+                <div class="order-items">${items}</div>
+                <span class="status ${order.status}">${statusLabels[order.status] || order.status}</span>
+              </div>
+              ${order.details ? `<div class="order-details">📝 ${order.details}</div>` : ''}
+              ${order.status === 'refusee' && order.raisonRefus ? `<div class="order-details" style="color:#ff4757">❌ ${order.raisonRefus}</div>` : ''}
+              ${order.status === 'validee' ? `<div class="order-details" style="color:#2ed573">✅ Validée — En cours de préparation</div>` : ''}
+              ${order.status === 'livree' ? `<div class="order-details" style="color:#a29bfe">🚚 Livrée — Bon jeu !</div>` : ''}
+            </div>
+          `;
+        });
+        
+        container.innerHTML = html;
+        
+      } catch (e) {
+        container.innerHTML = '<div class="empty"><div class="empty-icon">❌</div>Erreur de connexion</div>';
+      }
+    }
+    
+    // ─── UTILS ─────────────────────────────────────────────────────────────────
+    function showToast(msg, type) {
+      const toast = document.createElement('div');
+      toast.className = `toast ${type}`;
+      toast.textContent = msg;
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3500);
+    }
+    
+    // Event listeners
+    document.getElementById('search-catalogue').addEventListener('input', () => renderCatalogue(catalogueItems));
+    document.getElementById('filter-category').addEventListener('change', () => renderCatalogue(catalogueItems));
+    document.getElementById('discord-id-search').addEventListener('keypress', (e) => {
+      if (e.key === 'Enter') searchOrders();
+    });
+    
+    // Ajouter le bouton "Passer commande" dans l'en-tête
+    window.addEventListener('DOMContentLoaded', () => {
+      const header = document.querySelector('.header');
+      const btn = document.createElement('button');
+      btn.textContent = '🛒 Passer commande';
+      btn.style.cssText = 'padding:12px 25px;background:#2ed573;border:none;border-radius:8px;color:#000;font-weight:bold;cursor:pointer;font-size:15px';
+      btn.onclick = openOrderModal;
+      header.appendChild(btn);
+      
+      init();
+    });
+  </script>
+</body>
+</html>
