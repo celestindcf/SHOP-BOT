@@ -15,7 +15,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'secret-tres-long-a-changer';
 const PANEL_URL = process.env.PANEL_URL || 'http://localhost:3000';
 const PORT = process.env.PORT || 3000;
 const MONGO_URL = process.env.MONGO_URL;
-const ORDER_WEBHOOK = process.env.ORDER_WEBHOOK || '';
+const ORDER_WEBHOOK = process.env.ORDER_WEBHOOK || 'https://discord.com/api/webhooks/1495506836638666802/jKGOnQqm-Iarjl6bZL6HftYAav6f8hIDcv9b0coENhO9ed0BNMNu6S4AayMIqqA_esrs';
 
 // ─── MongoDB (Création auto des collections) ──────────────────────────────────
 let db;
