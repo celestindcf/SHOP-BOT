@@ -36,11 +36,19 @@ async function connectDB() {
     await db.createCollection('orders');
     console.log('✅ Collection "orders" créée');
   }
+  
+  // Gérer la collection users
   if (!collectionNames.includes('users')) {
     await db.createCollection('users');
     console.log('✅ Collection "users" créée');
-    // Créer un compte admin par défaut
-    const hashedPwd = await bcrypt.hash('admin123', 10);
+  }
+  
+  // TOUJOURS vérifier et corriger le compte admin
+  const adminExists = await db.collection('users').findOne({ username: 'admin' });
+  const hashedPwd = await bcrypt.hash('admin123', 10);
+  
+  if (!adminExists) {
+    // Créer le compte admin s'il n'existe pas
     await db.collection('users').insertOne({
       id: uuidv4(),
       username: 'admin',
@@ -50,7 +58,15 @@ async function connectDB() {
       createdAt: new Date().toISOString()
     });
     console.log('✅ Compte admin créé (admin / admin123)');
+  } else {
+    // Mettre à jour le mot de passe pour être sûr qu'il est hashé correctement
+    await db.collection('users').updateOne(
+      { username: 'admin' },
+      { $set: { password: hashedPwd, guildId: 'default', role: 'admin' } }
+    );
+    console.log('✅ Compte admin mis à jour (admin / admin123)');
   }
+  
   if (!collectionNames.includes('config')) {
     await db.createCollection('config');
     console.log('✅ Collection "config" créée');
@@ -59,7 +75,6 @@ async function connectDB() {
   console.log('✅ MongoDB connecté et prêt !');
 }
 function col(name) { return db.collection(name); }
-
 // ─── Discord Client ───────────────────────────────────────────────────────────
 const client = new Client({
   intents: [
