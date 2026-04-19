@@ -1,8 +1,6 @@
 const { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionFlagsBits, REST, Routes } = require('discord.js');
 const express = require('express');
 const cors = require('cors');
-const bcrypt = require('bcryptjs');
-const jwt = require('jsonwebtoken');
 const { v4: uuidv4 } = require('uuid');
 const { MongoClient } = require('mongodb');
 const path = require('path');
@@ -11,13 +9,15 @@ require('dotenv').config();
 // ─── Config ───────────────────────────────────────────────────────────────────
 const BOT_TOKEN = process.env.BOT_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
-const JWT_SECRET = process.env.JWT_SECRET || 'secret-tres-long-a-changer';
 const PANEL_URL = process.env.PANEL_URL || 'http://localhost:3000';
 const PORT = process.env.PORT || 3000;
 const MONGO_URL = process.env.MONGO_URL;
-const ORDER_WEBHOOK = process.env.ORDER_WEBHOOK || 'https://discord.com/api/webhooks/1495506836638666802/jKGOnQqm-Iarjl6bZL6HftYAav6f8hIDcv9b0coENhO9ed0BNMNu6S4AayMIqqA_esrs';
+const ORDER_WEBHOOK = process.env.ORDER_WEBHOOK || '';
 
-// ─── MongoDB (Création auto des collections) ──────────────────────────────────
+// ─── ID du serveur Discord ────────────────────────────────────────────────────
+const GUILD_ID = '1495077016515514408'; // ← REMPLACE PAR TON ID SERVEUR
+
+// ─── MongoDB ──────────────────────────────────────────────────────────────────
 let db;
 async function connectDB() {
   const client = new MongoClient(MONGO_URL);
@@ -27,318 +27,164 @@ async function connectDB() {
   const collections = await db.listCollections().toArray();
   const collectionNames = collections.map(c => c.name);
   
-  if (!collectionNames.includes('shop')) {
-    await db.createCollection('shop');
-    console.log('✅ Collection "shop" créée');
-  }
-  if (!collectionNames.includes('orders')) {
-    await db.createCollection('orders');
-    console.log('✅ Collection "orders" créée');
-  }
+  if (!collectionNames.includes('shop')) await db.createCollection('shop');
+  if (!collectionNames.includes('orders')) await db.createCollection('orders');
+  if (!collectionNames.includes('config')) await db.createCollection('config');
   
-  if (!collectionNames.includes('users')) {
-    await db.createCollection('users');
-    console.log('✅ Collection "users" créée');
-  }
-  
-  const adminExists = await db.collection('users').findOne({ username: 'admin' });
-  const hashedPwd = await bcrypt.hash('admin123', 10);
-  
-  if (!adminExists) {
-    await db.collection('users').insertOne({
-      id: uuidv4(),
-      username: 'admin',
-      password: hashedPwd,
-      guildId: 'default',
-      role: 'admin',
-      createdAt: new Date().toISOString()
-    });
-    console.log('✅ Compte admin créé (admin / admin123)');
-  } else {
-    await db.collection('users').updateOne(
-      { username: 'admin' },
-      { $set: { password: hashedPwd, guildId: 'default', role: 'admin' } }
-    );
-    console.log('✅ Compte admin mis à jour (admin / admin123)');
-  }
-  
-  if (!collectionNames.includes('config')) {
-    await db.createCollection('config');
-    console.log('✅ Collection "config" créée');
-  }
-  
-  console.log('✅ MongoDB connecté et prêt !');
+  console.log('✅ MongoDB connecté !');
 }
 function col(name) { return db.collection(name); }
 
 // ─── Discord Client ───────────────────────────────────────────────────────────
 const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent
-  ]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent]
 });
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function generateOrderId() {
-  return 'CMD-' + uuidv4().slice(0, 8).toUpperCase();
-}
+function generateOrderId() { return 'CMD-' + uuidv4().slice(0, 8).toUpperCase(); }
 
 async function sendWebhook(embed) {
   if (!ORDER_WEBHOOK) return;
   try {
-    await fetch(ORDER_WEBHOOK, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ embeds: [embed] })
-    });
-  } catch (e) { console.error('Webhook error:', e.message); }
+    await fetch(ORDER_WEBHOOK, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ embeds: [embed] }) });
+  } catch (e) {}
 }
 
 // ─── Slash Commands ───────────────────────────────────────────────────────────
 const commands = [
-  new SlashCommandBuilder().setName('catalogue').setDescription('Voir le catalogue des articles disponibles').addStringOption(o => o.setName('categorie').setDescription('Filtrer par catégorie').setRequired(false)),
-  new SlashCommandBuilder().setName('commander').setDescription('Passer une commande').addStringOption(o => o.setName('article').setDescription('Nom ou ID de l\'article').setRequired(true)).addIntegerOption(o => o.setName('quantite').setDescription('Quantité (défaut: 1)').setRequired(false)).addStringOption(o => o.setName('details').setDescription('Précisions supplémentaires').setRequired(false)),
-  new SlashCommandBuilder().setName('mescommandes').setDescription('Voir l\'historique de vos commandes'),
-  new SlashCommandBuilder().setName('validercommande').setDescription('[VENDEUR] Valider une commande').addStringOption(o => o.setName('id').setDescription('ID de la commande').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
-  new SlashCommandBuilder().setName('refusercommande').setDescription('[VENDEUR] Refuser une commande').addStringOption(o => o.setName('id').setDescription('ID de la commande').setRequired(true)).addStringOption(o => o.setName('raison').setDescription('Raison du refus').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
-  new SlashCommandBuilder().setName('livrercommande').setDescription('[VENDEUR] Marquer une commande comme livrée').addStringOption(o => o.setName('id').setDescription('ID de la commande').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
-  new SlashCommandBuilder().setName('panelvendeur').setDescription('[VENDEUR] Lien vers le panel de gestion'),
-  new SlashCommandBuilder().setName('addarticle').setDescription('[ADMIN] Ajouter un article au catalogue').addStringOption(o => o.setName('nom').setDescription('Nom de l\'article').setRequired(true)).addStringOption(o => o.setName('categorie').setDescription('Catégorie').setRequired(true)).addIntegerOption(o => o.setName('prix').setDescription('Prix (affichage uniquement)').setRequired(false)).addStringOption(o => o.setName('description').setDescription('Description').setRequired(false)).addStringOption(o => o.setName('image').setDescription('URL de l\'image').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-  new SlashCommandBuilder().setName('removearticle').setDescription('[ADMIN] Supprimer un article').addStringOption(o => o.setName('id').setDescription('ID de l\'article').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-  new SlashCommandBuilder().setName('editarticle').setDescription('[ADMIN] Modifier un article').addStringOption(o => o.setName('id').setDescription('ID de l\'article').setRequired(true)).addIntegerOption(o => o.setName('prix').setDescription('Nouveau prix').setRequired(false)).addStringOption(o => o.setName('description').setDescription('Nouvelle description').setRequired(false)).addStringOption(o => o.setName('categorie').setDescription('Nouvelle catégorie').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('catalogue').setDescription('Voir le catalogue').addStringOption(o => o.setName('categorie').setDescription('Filtrer').setRequired(false)),
+  new SlashCommandBuilder().setName('commander').setDescription('Passer une commande').addStringOption(o => o.setName('article').setDescription('Nom ou ID').setRequired(true)).addIntegerOption(o => o.setName('quantite').setDescription('Quantité').setRequired(false)).addStringOption(o => o.setName('details').setDescription('Précisions').setRequired(false)),
+  new SlashCommandBuilder().setName('mescommandes').setDescription('Voir vos commandes'),
+  new SlashCommandBuilder().setName('validercommande').setDescription('[VENDEUR] Valider').addStringOption(o => o.setName('id').setDescription('ID commande').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+  new SlashCommandBuilder().setName('refusercommande').setDescription('[VENDEUR] Refuser').addStringOption(o => o.setName('id').setDescription('ID commande').setRequired(true)).addStringOption(o => o.setName('raison').setDescription('Raison').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+  new SlashCommandBuilder().setName('livrercommande').setDescription('[VENDEUR] Livrer').addStringOption(o => o.setName('id').setDescription('ID commande').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+  new SlashCommandBuilder().setName('panelvendeur').setDescription('[VENDEUR] Lien panel'),
+  new SlashCommandBuilder().setName('addarticle').setDescription('[ADMIN] Ajouter article').addStringOption(o => o.setName('nom').setDescription('Nom').setRequired(true)).addStringOption(o => o.setName('categorie').setDescription('Catégorie').setRequired(true)).addIntegerOption(o => o.setName('prix').setDescription('Prix').setRequired(false)).addStringOption(o => o.setName('description').setDescription('Description').setRequired(false)).addStringOption(o => o.setName('image').setDescription('URL image').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('removearticle').setDescription('[ADMIN] Supprimer').addStringOption(o => o.setName('id').setDescription('ID article').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('editarticle').setDescription('[ADMIN] Modifier').addStringOption(o => o.setName('id').setDescription('ID article').setRequired(true)).addIntegerOption(o => o.setName('prix').setDescription('Prix').setRequired(false)).addStringOption(o => o.setName('description').setDescription('Description').setRequired(false)).addStringOption(o => o.setName('categorie').setDescription('Catégorie').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 ];
 
-// ─── Register Commands ────────────────────────────────────────────────────────
 async function registerCommands() {
   const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
-  try {
-    await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands.map(c => c.toJSON()) });
-    console.log('✅ Commandes enregistrées !');
-  } catch (e) { console.error('❌', e); }
+  try { await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands.map(c => c.toJSON()) }); console.log('✅ Commandes enregistrées'); } catch (e) {}
 }
 
-// ─── Bot Events ───────────────────────────────────────────────────────────────
-client.once('ready', async () => {
-  console.log(`🤖 ${client.user.tag} connecté !`);
-  await registerCommands();
-});
+client.once('ready', async () => { console.log(`🤖 ${client.user.tag} connecté !`); await registerCommands(); });
 
 // ─── Interactions ─────────────────────────────────────────────────────────────
 client.on('interactionCreate', async interaction => {
   if (!interaction.isChatInputCommand()) return;
-  
   const { commandName, options, guild, user } = interaction;
-  
   try {
-    if (commandName === 'panelvendeur') {
-      await interaction.deferReply({ flags: 64 });
-    } else {
-      await interaction.deferReply();
-    }
+    if (commandName === 'panelvendeur') await interaction.deferReply({ flags: 64 });
+    else await interaction.deferReply();
     
-    // ─── CATALOGUE ─────────────────────────────────────────────────────────────
     if (commandName === 'catalogue') {
       const categorie = options.getString('categorie');
-      const shopData = await col('shop').findOne({ guildId: guild.id });
-      const items = shopData?.items || [];
-      
-      let filteredItems = items;
-      if (categorie) filteredItems = items.filter(i => i.categorie?.toLowerCase() === categorie.toLowerCase());
-      
-      if (filteredItems.length === 0) return interaction.editReply({ content: '❌ Aucun article trouvé.' });
-      
-      const byCategory = {};
-      filteredItems.forEach(item => {
-        const cat = item.categorie || 'Autre';
-        if (!byCategory[cat]) byCategory[cat] = [];
-        byCategory[cat].push(item);
-      });
-      
-      const embed = new EmbedBuilder().setTitle('🏪 Catalogue RP').setColor(0x57F287).setDescription('Voici les articles disponibles à la commande :').setThumbnail(guild.iconURL()).setTimestamp();
-      
-      for (const [cat, catItems] of Object.entries(byCategory)) {
-        const itemList = catItems.map(i => {
-          const priceDisplay = i.prix ? ` — **${i.prix}** 💰` : '';
-          return `**${i.nom}**${priceDisplay}\n> ID: \`${i.id}\`\n> ${i.description || 'Aucune description'}`;
-        }).join('\n\n');
-        embed.addFields({ name: `📦 ${cat}`, value: itemList.slice(0, 1024) });
+      const items = (await col('shop').findOne({ guildId: guild.id }))?.items || [];
+      let filtered = categorie ? items.filter(i => i.categorie?.toLowerCase() === categorie.toLowerCase()) : items;
+      if (!filtered.length) return interaction.editReply({ content: '❌ Aucun article.' });
+      const byCat = {}; filtered.forEach(i => { const c = i.categorie || 'Autre'; if (!byCat[c]) byCat[c] = []; byCat[c].push(i); });
+      const embed = new EmbedBuilder().setTitle('🏪 Catalogue').setColor(0x57F287);
+      for (const [cat, catItems] of Object.entries(byCat)) {
+        embed.addFields({ name: `📦 ${cat}`, value: catItems.map(i => `**${i.nom}**${i.prix ? ` — ${i.prix}💰` : ''}\n> \`${i.id}\`\n> ${i.description || ''}`).join('\n\n').slice(0, 1024) });
       }
-      
-      embed.setFooter({ text: 'Utilise /commander article:<nom ou ID> pour passer commande' });
       await interaction.editReply({ embeds: [embed] });
     }
     
-    // ─── COMMANDER ─────────────────────────────────────────────────────────────
     if (commandName === 'commander') {
-      const articleQuery = options.getString('article').toLowerCase();
-      const quantite = options.getInteger('quantite') || 1;
+      const query = options.getString('article').toLowerCase();
+      const qte = options.getInteger('quantite') || 1;
       const details = options.getString('details') || '';
-      
-      const shopData = await col('shop').findOne({ guildId: guild.id });
-      const items = shopData?.items || [];
-      
-      const item = items.find(i => i.id.toLowerCase() === articleQuery || i.nom.toLowerCase().includes(articleQuery));
-      if (!item) return interaction.editReply({ content: '❌ Article introuvable.' });
-      
-      const confirmEmbed = new EmbedBuilder().setTitle('🛒 Confirmation de commande').setColor(0xFEE75C).setDescription(`Vous allez commander :\n\n**${quantite}x ${item.nom}**`).setFooter({ text: 'Cliquez sur ✅ pour confirmer' });
-      if (item.prix) confirmEmbed.addFields({ name: '💰 Prix indicatif', value: `${item.prix} 💰`, inline: true });
-      if (details) confirmEmbed.addFields({ name: '📝 Détails', value: details, inline: false });
-      
-      const row = new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId(`confirm_order_${item.id}_${quantite}_${details ? encodeURIComponent(details) : 'none'}`).setLabel('✅ Confirmer').setStyle(ButtonStyle.Success),
-        new ButtonBuilder().setCustomId('cancel_order').setLabel('❌ Annuler').setStyle(ButtonStyle.Danger)
-      );
-      
-      await interaction.editReply({ embeds: [confirmEmbed], components: [row] });
+      const item = (await col('shop').findOne({ guildId: guild.id }))?.items?.find(i => i.id.toLowerCase() === query || i.nom.toLowerCase().includes(query));
+      if (!item) return interaction.editReply({ content: '❌ Introuvable.' });
+      const embed = new EmbedBuilder().setTitle('🛒 Confirmation').setColor(0xFEE75C).setDescription(`**${qte}x ${item.nom}**`).setFooter({ text: '✅ Confirmer' });
+      if (item.prix) embed.addFields({ name: '💰', value: `${item.prix} 💰`, inline: true });
+      if (details) embed.addFields({ name: '📝', value: details });
+      const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`confirm_${item.id}_${qte}_${details ? encodeURIComponent(details) : 'none'}`).setLabel('✅').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('cancel_order').setLabel('❌').setStyle(ButtonStyle.Danger));
+      await interaction.editReply({ embeds: [embed], components: [row] });
     }
     
-    // ─── MESCOMMANDES ──────────────────────────────────────────────────────────
     if (commandName === 'mescommandes') {
       const orders = await col('orders').find({ guildId: guild.id, userId: user.id }).sort({ createdAt: -1 }).limit(10).toArray();
-      if (orders.length === 0) return interaction.editReply({ content: '📭 Vous n\'avez aucune commande.' });
-      
-      const embed = new EmbedBuilder().setTitle(`📋 Vos commandes — ${user.username}`).setColor(0x5865F2).setThumbnail(user.displayAvatarURL());
-      const statusEmojis = { 'en_attente': '🟡 En attente', 'validee': '🟢 Validée', 'livree': '✅ Livrée', 'refusee': '🔴 Refusée' };
-      
-      orders.forEach(order => {
-        const itemsList = order.items.map(i => `• ${i.quantite}x ${i.nom}`).join('\n');
-        const details = order.details ? `\n📝 ${order.details}` : '';
-        embed.addFields({ name: `📦 ${order.orderId} — ${statusEmojis[order.status] || order.status}`, value: `${itemsList}${details}\nDate : ${new Date(order.createdAt).toLocaleDateString('fr-FR')}` });
-      });
-      
+      if (!orders.length) return interaction.editReply({ content: '📭 Aucune commande.' });
+      const embed = new EmbedBuilder().setTitle(`📋 ${user.username}`).setColor(0x5865F2);
+      const st = { 'en_attente': '🟡 En attente', 'validee': '🟢 Validée', 'livree': '✅ Livrée', 'refusee': '🔴 Refusée' };
+      orders.forEach(o => embed.addFields({ name: `${o.orderId} — ${st[o.status] || o.status}`, value: `${o.items.map(i => `${i.quantite}x ${i.nom}`).join('\n')}${o.details ? `\n📝 ${o.details}` : ''}` }));
       await interaction.editReply({ embeds: [embed] });
     }
     
-    // ─── PANELVENDEUR ─────────────────────────────────────────────────────────
     if (commandName === 'panelvendeur') {
-      const embed = new EmbedBuilder().setTitle('🛡️ Panel Vendeur').setColor(0x5865F2).setDescription(`🔗 **[Accéder au panel](${PANEL_URL}/?guild=${guild.id})**`).addFields({ name: '🔑 Accès', value: 'Réservé aux vendeurs.' });
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.editReply({ embeds: [new EmbedBuilder().setTitle('🛡️ Panel').setColor(0x5865F2).setDescription(`[Accéder](${PANEL_URL}/?guild=${guild.id})`)] });
     }
     
-    // ─── VALIDERCOMMANDE ──────────────────────────────────────────────────────
     if (commandName === 'validercommande') {
-      const orderId = options.getString('id');
-      const order = await col('orders').findOne({ guildId: guild.id, orderId });
-      if (!order) return interaction.editReply({ content: '❌ Commande introuvable.' });
-      if (order.status !== 'en_attente') return interaction.editReply({ content: `❌ Cette commande est déjà ${order.status}.` });
-      
-      await col('orders').updateOne({ guildId: guild.id, orderId }, { $set: { status: 'validee', staffId: user.id, staffTag: user.tag, validatedAt: new Date().toISOString() }});
-      
-      await sendWebhook(new EmbedBuilder().setTitle('✅ Commande validée').setColor(0x57F287).setDescription(`**${orderId}** validée par ${user.tag}`).addFields({ name: '👤 Client', value: `<@${order.userId}>`, inline: true }, { name: '🛒 Articles', value: order.items.map(i => `${i.quantite}x ${i.nom}`).join('\n'), inline: false }).setTimestamp());
-      
-      try { await (await guild.members.fetch(order.userId)).send({ embeds: [new EmbedBuilder().setTitle('✅ Commande validée').setColor(0x57F287).setDescription(`Votre commande **${orderId}** a été validée par ${user.tag}.`)] }); } catch {}
-      
-      await interaction.editReply({ content: `✅ Commande **${orderId}** validée !` });
+      const o = await col('orders').findOne({ guildId: guild.id, orderId: options.getString('id') });
+      if (!o) return interaction.editReply({ content: '❌ Introuvable.' });
+      if (o.status !== 'en_attente') return interaction.editReply({ content: `❌ Déjà ${o.status}.` });
+      await col('orders').updateOne({ guildId: guild.id, orderId: o.orderId }, { $set: { status: 'validee', staffId: user.id, staffTag: user.tag, validatedAt: new Date().toISOString() } });
+      await sendWebhook(new EmbedBuilder().setTitle('✅ Validée').setColor(0x57F287).setDescription(`**${o.orderId}** par ${user.tag}`).addFields({ name: '👤', value: `<@${o.userId}>` }, { name: '🛒', value: o.items.map(i => `${i.quantite}x ${i.nom}`).join('\n') }));
+      try { await (await guild.members.fetch(o.userId)).send({ embeds: [new EmbedBuilder().setTitle('✅ Validée').setColor(0x57F287).setDescription(`**${o.orderId}** validée.`)] }); } catch {}
+      await interaction.editReply({ content: `✅ ${o.orderId} validée.` });
     }
     
-    // ─── REFUSERCOMMANDE ──────────────────────────────────────────────────────
     if (commandName === 'refusercommande') {
-      const orderId = options.getString('id');
-      const raison = options.getString('raison') || 'Aucune raison fournie';
-      const order = await col('orders').findOne({ guildId: guild.id, orderId });
-      if (!order) return interaction.editReply({ content: '❌ Commande introuvable.' });
-      
-      await col('orders').updateOne({ guildId: guild.id, orderId }, { $set: { status: 'refusee', staffId: user.id, staffTag: user.tag, raisonRefus: raison, validatedAt: new Date().toISOString() }});
-      
-      await sendWebhook(new EmbedBuilder().setTitle('❌ Commande refusée').setColor(0xED4245).setDescription(`**${orderId}** refusée par ${user.tag}`).addFields({ name: '📝 Raison', value: raison }).setTimestamp());
-      
-      try { await (await guild.members.fetch(order.userId)).send({ embeds: [new EmbedBuilder().setTitle('❌ Commande refusée').setColor(0xED4245).setDescription(`Votre commande **${orderId}** a été refusée.\nRaison : ${raison}`)] }); } catch {}
-      
-      await interaction.editReply({ content: `❌ Commande **${orderId}** refusée.` });
+      const o = await col('orders').findOne({ guildId: guild.id, orderId: options.getString('id') });
+      if (!o) return interaction.editReply({ content: '❌ Introuvable.' });
+      const raison = options.getString('raison') || 'Aucune';
+      await col('orders').updateOne({ guildId: guild.id, orderId: o.orderId }, { $set: { status: 'refusee', staffId: user.id, staffTag: user.tag, raisonRefus: raison, validatedAt: new Date().toISOString() } });
+      await sendWebhook(new EmbedBuilder().setTitle('❌ Refusée').setColor(0xED4245).setDescription(`**${o.orderId}** par ${user.tag}`).addFields({ name: '📝', value: raison }));
+      try { await (await guild.members.fetch(o.userId)).send({ embeds: [new EmbedBuilder().setTitle('❌ Refusée').setColor(0xED4245).setDescription(`**${o.orderId}** refusée.\n${raison}`)] }); } catch {}
+      await interaction.editReply({ content: `❌ ${o.orderId} refusée.` });
     }
     
-    // ─── LIVRERCOMMANDE ───────────────────────────────────────────────────────
     if (commandName === 'livrercommande') {
-      const orderId = options.getString('id');
-      const order = await col('orders').findOne({ guildId: guild.id, orderId });
-      if (!order) return interaction.editReply({ content: '❌ Commande introuvable.' });
-      if (order.status !== 'validee') return interaction.editReply({ content: `❌ Cette commande doit être validée avant livraison (statut actuel : ${order.status}).` });
-      
-      await col('orders').updateOne({ guildId: guild.id, orderId }, { $set: { status: 'livree', deliveredAt: new Date().toISOString() }});
-      
-      await sendWebhook(new EmbedBuilder().setTitle('🚚 Commande livrée').setColor(0x5352ed).setDescription(`**${orderId}** marquée comme livrée par ${user.tag}`).addFields({ name: '👤 Client', value: `<@${order.userId}>`, inline: true }, { name: '🛒 Articles', value: order.items.map(i => `${i.quantite}x ${i.nom}`).join('\n'), inline: false }).setTimestamp());
-      
-      try { await (await guild.members.fetch(order.userId)).send({ embeds: [new EmbedBuilder().setTitle('🚚 Commande livrée').setColor(0x57F287).setDescription(`Votre commande **${orderId}** a été livrée ! Bon jeu !`)] }); } catch {}
-      
-      await interaction.editReply({ content: `✅ Commande **${orderId}** marquée comme livrée !` });
+      const o = await col('orders').findOne({ guildId: guild.id, orderId: options.getString('id') });
+      if (!o) return interaction.editReply({ content: '❌ Introuvable.' });
+      if (o.status !== 'validee') return interaction.editReply({ content: `❌ Doit être validée.` });
+      await col('orders').updateOne({ guildId: guild.id, orderId: o.orderId }, { $set: { status: 'livree', deliveredAt: new Date().toISOString() } });
+      await sendWebhook(new EmbedBuilder().setTitle('🚚 Livrée').setColor(0x5352ed).setDescription(`**${o.orderId}** par ${user.tag}`));
+      try { await (await guild.members.fetch(o.userId)).send({ embeds: [new EmbedBuilder().setTitle('🚚 Livrée').setColor(0x57F287).setDescription(`**${o.orderId}** livrée !`)] }); } catch {}
+      await interaction.editReply({ content: `✅ ${o.orderId} livrée.` });
     }
     
-    // ─── ADDARTICLE ───────────────────────────────────────────────────────────
     if (commandName === 'addarticle') {
-      const nom = options.getString('nom');
-      const categorie = options.getString('categorie');
-      const prix = options.getInteger('prix');
-      const description = options.getString('description') || '';
-      const image = options.getString('image') || '';
-      const itemId = nom.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + uuidv4().slice(0, 4);
-      const item = { id: itemId, nom, categorie, description, image, createdAt: new Date().toISOString() };
-      if (prix) item.prix = prix;
-      
+      const item = { id: options.getString('nom').toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + uuidv4().slice(0,4), nom: options.getString('nom'), categorie: options.getString('categorie'), description: options.getString('description') || '', image: options.getString('image') || '', createdAt: new Date().toISOString(), prix: options.getInteger('prix') || null };
       await col('shop').updateOne({ guildId: guild.id }, { $push: { items: item } }, { upsert: true });
-      
-      const embed = new EmbedBuilder().setTitle('✅ Article ajouté').setColor(0x57F287).setDescription(`**${nom}** a été ajouté au catalogue !`).addFields({ name: '📦 Catégorie', value: categorie, inline: true }, { name: '🆔 ID', value: `\`${itemId}\``, inline: true });
-      if (prix) embed.addFields({ name: '💰 Prix', value: `${prix} 💰`, inline: true });
-      if (image) embed.setImage(image);
-      
-      await interaction.editReply({ embeds: [embed] });
+      await interaction.editReply({ content: `✅ ${item.nom} ajouté (ID: \`${item.id}\`)` });
     }
     
-    // ─── REMOVEARTICLE ────────────────────────────────────────────────────────
     if (commandName === 'removearticle') {
-      const result = await col('shop').updateOne({ guildId: guild.id }, { $pull: { items: { id: options.getString('id') } } });
-      if (result.modifiedCount === 0) return interaction.editReply({ content: '❌ Article introuvable.' });
-      await interaction.editReply({ content: `✅ Article supprimé.` });
+      const r = await col('shop').updateOne({ guildId: guild.id }, { $pull: { items: { id: options.getString('id') } } });
+      if (!r.modifiedCount) return interaction.editReply({ content: '❌ Introuvable.' });
+      await interaction.editReply({ content: '✅ Supprimé.' });
     }
     
-    // ─── EDITARTICLE ──────────────────────────────────────────────────────────
     if (commandName === 'editarticle') {
-      const itemId = options.getString('id');
-      const update = {};
-      if (options.getInteger('prix') !== null) update['items.$.prix'] = options.getInteger('prix');
-      if (options.getString('description')) update['items.$.description'] = options.getString('description');
-      if (options.getString('categorie')) update['items.$.categorie'] = options.getString('categorie');
-      if (Object.keys(update).length === 0) return interaction.editReply({ content: '❌ Aucune modification.' });
-      
-      const result = await col('shop').updateOne({ guildId: guild.id, 'items.id': itemId }, { $set: update });
-      if (result.modifiedCount === 0) return interaction.editReply({ content: '❌ Article introuvable.' });
-      await interaction.editReply({ content: `✅ Article modifié !` });
+      const upd = {};
+      if (options.getInteger('prix') !== null) upd['items.$.prix'] = options.getInteger('prix');
+      if (options.getString('description')) upd['items.$.description'] = options.getString('description');
+      if (options.getString('categorie')) upd['items.$.categorie'] = options.getString('categorie');
+      const r = await col('shop').updateOne({ guildId: guild.id, 'items.id': options.getString('id') }, { $set: upd });
+      if (!r.modifiedCount) return interaction.editReply({ content: '❌ Introuvable.' });
+      await interaction.editReply({ content: '✅ Modifié.' });
     }
-    
-  } catch (error) {
-    console.error('Erreur interaction:', error);
-    await interaction.editReply({ content: '❌ Une erreur est survenue.' }).catch(() => {});
-  }
+  } catch (e) { await interaction.editReply({ content: '❌ Erreur.' }).catch(() => {}); }
 });
 
-// ─── Button Handler ───────────────────────────────────────────────────────────
+// ─── Buttons ──────────────────────────────────────────────────────────────────
 client.on('interactionCreate', async interaction => {
   if (!interaction.isButton()) return;
-  if (interaction.customId === 'cancel_order') return interaction.update({ content: '❌ Commande annulée.', embeds: [], components: [] });
-  
-  if (interaction.customId.startsWith('confirm_order_')) {
-    const parts = interaction.customId.split('_');
-    const itemId = parts[2];
-    const quantite = parseInt(parts[3]);
-    const details = parts[4] === 'none' ? '' : decodeURIComponent(parts[4]);
-    
-    const shopData = await col('shop').findOne({ guildId: interaction.guild.id });
-    const item = shopData?.items?.find(i => i.id === itemId);
-    if (!item) return interaction.update({ content: '❌ Article introuvable.', embeds: [], components: [] });
-    
-    const orderId = generateOrderId();
-    const order = { guildId: interaction.guild.id, orderId, userId: interaction.user.id, userTag: interaction.user.tag, items: [{ itemId: item.id, nom: item.nom, quantite }], details: details || null, status: 'en_attente', createdAt: new Date().toISOString() };
+  if (interaction.customId === 'cancel_order') return interaction.update({ content: '❌ Annulé.', embeds: [], components: [] });
+  if (interaction.customId.startsWith('confirm_')) {
+    const [, id, qte, det] = interaction.customId.split('_');
+    const details = det === 'none' ? '' : decodeURIComponent(det);
+    const item = (await col('shop').findOne({ guildId: interaction.guild.id }))?.items?.find(i => i.id === id);
+    if (!item) return interaction.update({ content: '❌ Introuvable.', embeds: [], components: [] });
+    const order = { guildId: interaction.guild.id, orderId: generateOrderId(), userId: interaction.user.id, userTag: interaction.user.tag, items: [{ itemId: item.id, nom: item.nom, quantite: parseInt(qte) }], details, status: 'en_attente', createdAt: new Date().toISOString() };
     await col('orders').insertOne(order);
-    
-    const webhookEmbed = new EmbedBuilder().setTitle('🛒 Nouvelle commande').setColor(0xFEE75C).setDescription(`**${orderId}** en attente`).addFields({ name: '👤 Client', value: `<@${interaction.user.id}>`, inline: true }, { name: '🛒 Articles', value: `${quantite}x ${item.nom}`, inline: true }).setTimestamp();
-    if (details) webhookEmbed.addFields({ name: '📝 Détails', value: details });
-    await sendWebhook(webhookEmbed);
-    
-    const embed = new EmbedBuilder().setTitle('✅ Commande enregistrée !').setColor(0x57F287).setDescription(`Votre commande **${orderId}** est en attente.\n\n**${quantite}x ${item.nom}**`).setFooter({ text: 'Vous serez notifié par MP.' });
-    if (details) embed.addFields({ name: '📝 Détails', value: details });
-    
-    await interaction.update({ embeds: [embed], components: [] });
+    await sendWebhook(new EmbedBuilder().setTitle('🛒 Nouvelle commande').setColor(0xFEE75C).setDescription(`**${order.orderId}**`).addFields({ name: '👤', value: `<@${interaction.user.id}>` }, { name: '🛒', value: `${qte}x ${item.nom}` }));
+    await interaction.update({ embeds: [new EmbedBuilder().setTitle('✅ Enregistrée').setColor(0x57F287).setDescription(`**${order.orderId}**\n${qte}x ${item.nom}`)], components: [] });
   }
 });
 
@@ -348,66 +194,62 @@ app.use(express.json());
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 
-function authMiddleware(req, res, next) {
-  const token = req.headers.authorization?.replace('Bearer ', '');
-  if (!token) return res.status(401).json({ error: 'Non autorisé' });
-  try { req.user = jwt.verify(token, JWT_SECRET); next(); } catch { res.status(401).json({ error: 'Token invalide' }); }
-}
-
-app.post('/api/auth/register', async (req, res) => {
-  const { username, password, guildId } = req.body;
-  if (!username || !password || !guildId) return res.status(400).json({ error: 'Champs manquants' });
-  if (await col('users').findOne({ guildId, username })) return res.status(409).json({ error: 'Utilisateur existant' });
-  const user = { id: uuidv4(), username, password: await bcrypt.hash(password, 10), guildId, role: 'staff', createdAt: new Date().toISOString() };
-  await col('users').insertOne(user);
-  res.json({ token: jwt.sign({ id: user.id, username, guildId, role: user.role }, JWT_SECRET, { expiresIn: '7d' }), user: { id: user.id, username, role: user.role } });
-});
-
-app.post('/api/auth/login', async (req, res) => {
-  const { username, password, guildId } = req.body;
-  const user = await col('users').findOne({ username });
-  if (!user || !await bcrypt.compare(password, user.password)) return res.status(401).json({ error: 'Identifiants incorrects' });
-  const effectiveGuildId = user.role === 'admin' ? guildId : user.guildId;
-  res.json({ token: jwt.sign({ id: user.id, username, guildId: effectiveGuildId, role: user.role }, JWT_SECRET, { expiresIn: '7d' }), user: { id: user.id, username, role: user.role } });
-});
-
-app.get('/api/orders', authMiddleware, async (req, res) => res.json(await col('orders').find({ guildId: req.user.guildId }).sort({ createdAt: -1 }).toArray()));
-app.patch('/api/orders/:orderId', authMiddleware, async (req, res) => {
-  const { status, raisonRefus } = req.body;
-  const update = { status };
-  if (raisonRefus) update.raisonRefus = raisonRefus;
-  if (status === 'validee' || status === 'refusee') { update.staffId = req.user.id; update.staffTag = req.user.username; update.validatedAt = new Date().toISOString(); }
-  if (status === 'livree') update.deliveredAt = new Date().toISOString();
-  await col('orders').updateOne({ guildId: req.user.guildId, orderId: req.params.orderId }, { $set: update });
-  res.json({ success: true });
-});
-
-app.get('/api/shop', authMiddleware, async (req, res) => res.json((await col('shop').findOne({ guildId: req.user.guildId }))?.items || []));
-app.post('/api/shop', authMiddleware, async (req, res) => {
-  const item = { ...req.body, id: req.body.nom.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + uuidv4().slice(0, 4), createdAt: new Date().toISOString() };
-  await col('shop').updateOne({ guildId: req.user.guildId }, { $push: { items: item } }, { upsert: true });
-  res.json(item);
-});
-app.patch('/api/shop/:itemId', authMiddleware, async (req, res) => {
-  const { prix, description, categorie } = req.body;
-  const update = {};
-  if (prix !== undefined) update['items.$.prix'] = prix;
-  if (description !== undefined) update['items.$.description'] = description;
-  if (categorie !== undefined) update['items.$.categorie'] = categorie;
-  await col('shop').updateOne({ guildId: req.user.guildId, 'items.id': req.params.itemId }, { $set: update });
-  res.json({ success: true });
-});
-app.delete('/api/shop/:itemId', authMiddleware, async (req, res) => {
-  await col('shop').updateOne({ guildId: req.user.guildId }, { $pull: { items: { id: req.params.itemId } } });
-  res.json({ success: true });
-});
-
-app.get('/api/public/shop/:guildId', async (req, res) => res.json((await col('shop').findOne({ guildId: req.params.guildId }))?.items || []));
-app.get('/api/public/orders/:userId', async (req, res) => {
-  const { userId } = req.params;
+// API pour le panel vendeur (SANS AUTHENTIFICATION)
+app.get('/api/orders', async (req, res) => {
   const { guild } = req.query;
   if (!guild) return res.status(400).json({ error: 'Guild ID requis' });
-  res.json(await col('orders').find({ guildId: guild, userId }).sort({ createdAt: -1 }).limit(30).toArray());
+  res.json(await col('orders').find({ guildId: guild }).sort({ createdAt: -1 }).toArray());
+});
+
+app.patch('/api/orders/:orderId', async (req, res) => {
+  const { guild, status, raisonRefus } = req.body;
+  if (!guild) return res.status(400).json({ error: 'Guild ID requis' });
+  const upd = { status };
+  if (raisonRefus) upd.raisonRefus = raisonRefus;
+  if (status === 'validee' || status === 'refusee') { upd.validatedAt = new Date().toISOString(); }
+  if (status === 'livree') upd.deliveredAt = new Date().toISOString();
+  await col('orders').updateOne({ guildId: guild, orderId: req.params.orderId }, { $set: upd });
+  res.json({ success: true });
+});
+
+app.get('/api/shop', async (req, res) => {
+  const { guild } = req.query;
+  if (!guild) return res.status(400).json({ error: 'Guild ID requis' });
+  res.json((await col('shop').findOne({ guildId: guild }))?.items || []);
+});
+
+app.post('/api/shop', async (req, res) => {
+  const { guild, nom, categorie, prix, description, image } = req.body;
+  if (!guild) return res.status(400).json({ error: 'Guild ID requis' });
+  const item = { id: nom.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + uuidv4().slice(0,4), nom, categorie, description: description || '', image: image || '', prix: prix || null, createdAt: new Date().toISOString() };
+  await col('shop').updateOne({ guildId: guild }, { $push: { items: item } }, { upsert: true });
+  res.json(item);
+});
+
+app.patch('/api/shop/:itemId', async (req, res) => {
+  const { guild, prix, description, categorie } = req.body;
+  if (!guild) return res.status(400).json({ error: 'Guild ID requis' });
+  const upd = {};
+  if (prix !== undefined) upd['items.$.prix'] = prix;
+  if (description) upd['items.$.description'] = description;
+  if (categorie) upd['items.$.categorie'] = categorie;
+  await col('shop').updateOne({ guildId: guild, 'items.id': req.params.itemId }, { $set: upd });
+  res.json({ success: true });
+});
+
+app.delete('/api/shop/:itemId', async (req, res) => {
+  const { guild } = req.query;
+  if (!guild) return res.status(400).json({ error: 'Guild ID requis' });
+  await col('shop').updateOne({ guildId: guild }, { $pull: { items: { id: req.params.itemId } } });
+  res.json({ success: true });
+});
+
+// API publique joueurs
+app.get('/api/public/shop/:guildId', async (req, res) => res.json((await col('shop').findOne({ guildId: req.params.guildId }))?.items || []));
+app.get('/api/public/orders/:userId', async (req, res) => {
+  const { guild } = req.query;
+  if (!guild) return res.status(400).json({ error: 'Guild ID requis' });
+  res.json(await col('orders').find({ guildId: guild, userId: req.params.userId }).sort({ createdAt: -1 }).limit(30).toArray());
 });
 app.post('/api/public/orders', async (req, res) => {
   const { guildId, userId, items, details } = req.body;
@@ -416,8 +258,8 @@ app.post('/api/public/orders', async (req, res) => {
   await col('orders').insertOne(order);
   if (ORDER_WEBHOOK) {
     try {
-      const embed = new EmbedBuilder().setTitle('🛒 Nouvelle commande (Site)').setColor(0xFEE75C).setDescription(`**${order.orderId}** en attente`).addFields({ name: '👤 ID Discord', value: userId }, { name: '🛒 Articles', value: items.map(i => `${i.quantite}x ${i.nom}`).join('\n') }).setTimestamp();
-      if (details) embed.addFields({ name: '📝 Détails', value: details });
+      const embed = new EmbedBuilder().setTitle('🛒 Nouvelle commande (Site)').setColor(0xFEE75C).setDescription(`**${order.orderId}**`).addFields({ name: '👤', value: userId }, { name: '🛒', value: items.map(i => `${i.quantite}x ${i.nom}`).join('\n') });
+      if (details) embed.addFields({ name: '📝', value: details });
       await fetch(ORDER_WEBHOOK, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ embeds: [embed.toJSON()] }) });
     } catch {}
   }
@@ -429,7 +271,7 @@ app.get('*', (req, res) => res.sendFile(path.join(__dirname, 'public', req.path.
 // ─── Start ────────────────────────────────────────────────────────────────────
 async function start() {
   await connectDB();
-  app.listen(PORT, () => console.log(`🌐 Panel Vendeur: ${PANEL_URL}`));
+  app.listen(PORT, () => console.log(`🌐 Panel: ${PANEL_URL}`));
   await client.login(BOT_TOKEN);
 }
 start();
