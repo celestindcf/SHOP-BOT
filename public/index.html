@@ -24,34 +24,17 @@
     .btn-danger{background:#ff4757;color:#fff}
     .btn-primary{background:#5352ed;color:#fff}
     .btn-warning{background:#ff9f43;color:#000}
-    .btn-sm{padding:4px 10px;font-size:11px}
-    .auth-box{max-width:400px;margin:100px auto}
-    input,select,textarea{width:100%;padding:12px;background:#1a1f2a;border:1px solid #1e2535;border-radius:6px;color:#fff;margin-bottom:15px}
     .flex{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
     .tabs{display:flex;gap:5px;margin-bottom:20px}
     .tab{padding:10px 20px;background:#1a1f2a;border:none;color:#e0e0e0;cursor:pointer;border-radius:6px 6px 0 0}
     .tab.active{background:#5352ed}
-    .modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);display:flex;align-items:center;justify-content:center;z-index:1000}
-    .modal-content{background:#141a24;padding:25px;border-radius:8px;max-width:500px;width:90%;max-height:80vh;overflow-y:auto}
-    .logout{background:#ff4757;color:#fff;padding:8px 16px;border-radius:6px}
+    input,select,textarea{width:100%;padding:12px;background:#1a1f2a;border:1px solid #1e2535;border-radius:6px;color:#fff;margin-bottom:15px}
   </style>
 </head>
 <body>
-  <div id="login-screen" class="auth-box card">
-    <h2 style="color:#fff;margin-bottom:20px">🔐 Panel Vendeur — RP Shop</h2>
-    <input type="text" id="username" placeholder="Nom d'utilisateur">
-    <input type="password" id="password" placeholder="Mot de passe">
-    <button class="btn-primary" onclick="login()" style="width:100%">Se connecter</button>
-    <div id="error" style="color:#ff4757;margin-top:10px"></div>
-    <p style="margin-top:20px;font-size:12px;color:#4a5568;text-align:center">Accès réservé aux vendeurs</p>
-  </div>
-
-  <div id="app" style="display:none">
+  <div id="app">
     <div class="container">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
-        <h1>🛡️ Panel Vendeur — RP Shop</h1>
-        <button class="logout" onclick="logout()">🚪 Déconnexion</button>
-      </div>
+      <h1>🛡️ Panel Vendeur — RP Shop</h1>
       
       <div class="tabs">
         <button class="tab active" onclick="showTab('orders')">📋 Commandes</button>
@@ -90,8 +73,8 @@
     </div>
   </div>
   
-  <div id="add-modal" class="modal" style="display:none">
-    <div class="modal-content">
+  <div id="add-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);align-items:center;justify-content:center;z-index:1000">
+    <div style="background:#141a24;padding:25px;border-radius:8px;max-width:500px;width:90%">
       <h3 style="margin-bottom:20px;color:#a29bfe">➕ Ajouter un article</h3>
       <input type="text" id="item-nom" placeholder="Nom *">
       <input type="text" id="item-categorie" placeholder="Catégorie *">
@@ -106,37 +89,39 @@
   </div>
 
   <script>
-    let token = localStorage.getItem('rp_vendeur_token');
     const guildId = new URLSearchParams(location.search).get('guild') || '';
     let orders = [], items = [];
     
-    async function login() {
-      const u = document.getElementById('username').value;
-      const p = document.getElementById('password').value;
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({username: u, password: p, guildId})
-      });
-      const d = await res.json();
-      if (!res.ok) return document.getElementById('error').textContent = d.error;
-      token = d.token;
-      localStorage.setItem('rp_vendeur_token', token);
-      showApp();
+    async function loadOrders() {
+      const res = await fetch(`/api/orders?guild=${guildId}`);
+      orders = await res.json();
+      const filter = document.getElementById('status-filter').value;
+      let filtered = filter ? orders.filter(o => o.status === filter) : orders;
+      const st = {'en_attente':'🟡 Attente','validee':'🟢 Validée','livree':'✅ Livrée','refusee':'🔴 Refusée'};
+      document.querySelector('#orders-table tbody').innerHTML = filtered.map(o => `
+        <tr><td><code>${o.orderId}</code></td><td>${o.userTag || o.userId}</td><td>${o.items.map(i => `${i.quantite}x ${i.nom}`).join('<br>')}</td><td>${o.details || '-'}</td><td>${new Date(o.createdAt).toLocaleDateString('fr-FR')}</td><td><span class="status ${o.status}">${st[o.status]}</span></td>
+        <td>${o.status==='en_attente'?`<button class="btn-success" onclick="updateOrder('${o.orderId}','validee')">✅</button>`:''}${o.status==='validee'?`<button class="btn-primary" onclick="updateOrder('${o.orderId}','livree')">🚚</button>`:''}${o.status==='en_attente'?`<button class="btn-danger" onclick="refuseOrder('${o.orderId}')">❌</button>`:''}</td></tr>
+      `).join('');
     }
     
-    function logout() {
-      localStorage.removeItem('rp_vendeur_token');
-      token = null;
-      document.getElementById('app').style.display = 'none';
-      document.getElementById('login-screen').style.display = 'block';
+    async function updateOrder(id, status) {
+      await fetch(`/api/orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ guild: guildId, status }) });
+      loadOrders();
     }
     
-    async function showApp() {
-      document.getElementById('login-screen').style.display = 'none';
-      document.getElementById('app').style.display = 'block';
-      await loadOrders();
-      await loadShop();
+    async function refuseOrder(id) {
+      const raison = prompt('Raison (optionnel) :') || 'Aucune';
+      await fetch(`/api/orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ guild: guildId, status: 'refusee', raisonRefus: raison }) });
+      loadOrders();
+    }
+    
+    async function loadShop() {
+      const res = await fetch(`/api/shop?guild=${guildId}`);
+      items = await res.json();
+      document.querySelector('#shop-table tbody').innerHTML = items.map(i => `
+        <tr><td>${i.image ? `<img src="${i.image}" style="width:40px;height:40px;object-fit:cover;border-radius:4px">` : '📦'}</td><td><strong>${i.nom}</strong><br><code>${i.id}</code></td><td>${i.categorie||'-'}</td><td>${i.prix ? i.prix+'💰' : '-'}</td><td>${i.description||'-'}</td>
+        <td><button class="btn-warning" onclick="editItem('${i.id}')">✏️</button><button class="btn-danger" onclick="deleteItem('${i.id}')">🗑️</button></td></tr>
+      `).join('');
     }
     
     function showTab(t) {
@@ -146,119 +131,43 @@
       document.getElementById('tab-catalogue').style.display = t === 'catalogue' ? 'block' : 'none';
     }
     
-    async function loadOrders() {
-      const res = await fetch('/api/orders', {headers: {Authorization: `Bearer ${token}`}});
-      orders = await res.json();
-      const filter = document.getElementById('status-filter').value;
-      let filtered = orders;
-      if (filter) filtered = orders.filter(o => o.status === filter);
-      
-      const statusLabels = {'en_attente':'🟡 Attente','validee':'🟢 Validée','livree':'✅ Livrée','refusee':'🔴 Refusée'};
-      const tbody = document.querySelector('#orders-table tbody');
-      tbody.innerHTML = filtered.map(o => `
-        <tr>
-          <td><code>${o.orderId}</code></td>
-          <td>${o.userTag || o.userId}</td>
-          <td>${o.items.map(i => `${i.quantite}x ${i.nom}`).join('<br>')}</td>
-          <td>${o.details || '-'}</td>
-          <td>${new Date(o.createdAt).toLocaleDateString('fr-FR')}</td>
-          <td><span class="status ${o.status}">${statusLabels[o.status]}</span></td>
-          <td>
-            ${o.status === 'en_attente' ? `<button class="btn-success btn-sm" onclick="updateOrder('${o.orderId}','validee')">✅</button>` : ''}
-            ${o.status === 'validee' ? `<button class="btn-primary btn-sm" onclick="updateOrder('${o.orderId}','livree')">🚚</button>` : ''}
-            ${o.status === 'en_attente' ? `<button class="btn-danger btn-sm" onclick="refuseOrder('${o.orderId}')">❌</button>` : ''}
-          </td>
-        </tr>
-      `).join('');
-    }
-    
-    async function updateOrder(id, status) {
-      await fetch(`/api/orders/${id}`, {
-        method: 'PATCH',
-        headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`},
-        body: JSON.stringify({status})
-      });
-      loadOrders();
-    }
-    
-    async function refuseOrder(id) {
-      const raison = prompt('Raison du refus (optionnel) :');
-      await fetch(`/api/orders/${id}`, {
-        method: 'PATCH',
-        headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`},
-        body: JSON.stringify({status: 'refusee', raisonRefus: raison || 'Aucune raison'})
-      });
-      loadOrders();
-    }
-    
-    async function loadShop() {
-      const res = await fetch('/api/shop', {headers: {Authorization: `Bearer ${token}`}});
-      items = await res.json();
-      const tbody = document.querySelector('#shop-table tbody');
-      tbody.innerHTML = items.map(i => `
-        <tr>
-          <td>${i.image ? `<img src="${i.image}" style="width:40px;height:40px;object-fit:cover;border-radius:4px">` : '📦'}</td>
-          <td><strong>${i.nom}</strong><br><code style="font-size:10px">${i.id}</code></td>
-          <td>${i.categorie || '-'}</td>
-          <td>${i.prix ? i.prix + ' 💰' : '-'}</td>
-          <td style="max-width:200px">${i.description || '-'}</td>
-          <td>
-            <button class="btn-warning btn-sm" onclick="editItem('${i.id}')">✏️</button>
-            <button class="btn-danger btn-sm" onclick="deleteItem('${i.id}')">🗑️</button>
-          </td>
-        </tr>
-      `).join('');
-    }
-    
     function openAddModal() { document.getElementById('add-modal').style.display = 'flex'; }
     function closeModal() { document.getElementById('add-modal').style.display = 'none'; }
     
     async function addItem() {
       const nom = document.getElementById('item-nom').value;
       const categorie = document.getElementById('item-categorie').value;
-      const prix = parseInt(document.getElementById('item-prix').value) || null;
-      const description = document.getElementById('item-desc').value;
-      const image = document.getElementById('item-image').value;
       if (!nom || !categorie) return alert('Nom et catégorie requis');
-      
       await fetch('/api/shop', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`},
-        body: JSON.stringify({nom, categorie, prix, description, image})
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ guild: guildId, nom, categorie, prix: parseInt(document.getElementById('item-prix').value) || null, description: document.getElementById('item-desc').value, image: document.getElementById('item-image').value })
       });
       closeModal();
-      ['item-nom','item-categorie','item-prix','item-desc','item-image'].forEach(id => document.getElementById(id).value = '');
+      loadShop();
+    }
+    
+    async function deleteItem(id) {
+      if (!confirm('Supprimer ?')) return;
+      await fetch(`/api/shop/${id}?guild=${guildId}`, { method: 'DELETE' });
       loadShop();
     }
     
     function editItem(id) {
       const item = items.find(i => i.id === id);
-      if (!item) return;
-      const newPrix = prompt('Nouveau prix (laisser vide pour ne pas changer) :', item.prix || '');
-      const newDesc = prompt('Nouvelle description :', item.description || '');
-      const newCat = prompt('Nouvelle catégorie :', item.categorie || '');
-      
-      const update = {};
-      if (newPrix !== null && newPrix !== '') update.prix = parseInt(newPrix) || null;
-      if (newDesc !== null) update.description = newDesc;
-      if (newCat !== null && newCat !== '') update.categorie = newCat;
-      
-      if (Object.keys(update).length === 0) return;
-      
-      fetch(`/api/shop/${id}`, {
-        method: 'PATCH',
-        headers: {'Content-Type': 'application/json', Authorization: `Bearer ${token}`},
-        body: JSON.stringify(update)
-      }).then(() => loadShop());
+      const prix = prompt('Prix :', item.prix || '');
+      const desc = prompt('Description :', item.description || '');
+      const cat = prompt('Catégorie :', item.categorie || '');
+      const upd = {};
+      if (priz !== null && prix !== '') upd.prix = parseInt(prix) || null;
+      if (desc !== null) upd.description = desc;
+      if (cat !== null && cat !== '') upd.categorie = cat;
+      if (Object.keys(upd).length) {
+        fetch(`/api/shop/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ guild: guildId, ...upd }) }).then(() => loadShop());
+      }
     }
     
-    async function deleteItem(id) {
-      if (!confirm('Supprimer cet article ?')) return;
-      await fetch(`/api/shop/${id}`, {method: 'DELETE', headers: {Authorization: `Bearer ${token}`}});
-      loadShop();
-    }
-    
-    if (token) showApp();
+    loadOrders();
+    loadShop();
   </script>
 </body>
 </html>
