@@ -53,7 +53,7 @@ async function sendWebhook(embed, webhookUrl = ORDER_WEBHOOK) {
 
 function slugify(str) { return str.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, ''); }
 
-// ─── Envoi du bon de commande à la concession ────────────────────────────────
+// ─── Envoi du bon de commande à la concession (par item) ─────────────────────
 async function notifyDealer(dealer, order, item) {
   if (!dealer?.webhook) return;
   const embed = new EmbedBuilder()
@@ -66,13 +66,25 @@ async function notifyDealer(dealer, order, item) {
     )
     .setTimestamp(new Date(order.createdAt));
   if (item.pack?.length) embed.addFields({ name: '📦 Pack inclus', value: item.pack.join(', ') });
-  if (order.details) embed.addFields({ name: '📝 Détails', value: order.details });
-  if (order.flocage) {
-    embed.addFields({ name: '🖼️ Flocage', value: order.flocage });
-    embed.setImage(order.flocage);
+  if (item.details) embed.addFields({ name: '📝 Détails', value: item.details });
+  if (item.flocage) {
+    embed.addFields({ name: '🖼️ Flocage', value: item.flocage });
+    embed.setImage(item.flocage);
   }
   embed.setFooter({ text: `ID commande : ${order.orderId}` });
   await sendWebhook(embed, dealer.webhook);
+}
+
+// ⭐ Notifie chaque concession concernée par une commande (par item voiture)
+async function notifyAllDealers(order) {
+  for (const item of order.items) {
+    if (item.type === 'voiture' && item.dealerId) {
+      const dealer = await col('dealers').findOne({ guildId: order.guildId, id: item.dealerId });
+      if (dealer?.webhook) {
+        await notifyDealer(dealer, order, item);
+      }
+    }
+  }
 }
 
 // ─── Slash Commands ───────────────────────────────────────────────────────────
@@ -181,7 +193,14 @@ client.on('interactionCreate', async interaction => {
       if (!orders.length) return interaction.editReply({ content: '📭 Aucune commande.' });
       const embed = new EmbedBuilder().setTitle(`📋 ${user.username}`).setColor(0x5865F2);
       const st = { 'en_attente': '🟡 En attente', 'validee': '🟢 Validée', 'livree': '✅ Livrée', 'refusee': '🔴 Refusée' };
-      orders.forEach(o => embed.addFields({ name: `${o.orderId} — ${st[o.status] || o.status}`, value: `${o.items.map(i => `${i.quantite}x ${i.nom}`).join('\n')}${o.dealerNom ? `\n🏢 ${o.dealerNom}` : ''}${o.details ? `\n📝 ${o.details}` : ''}` }));
+      orders.forEach(o => {
+        const itemsText = o.items.map(i => {
+          let t = `${i.quantite}x ${i.nom}`;
+          if (i.dealerNom) t += ` — 🏢 ${i.dealerNom}`;
+          return t;
+        }).join('\n');
+        embed.addFields({ name: `${o.orderId} — ${st[o.status] || o.status}`, value: itemsText + (o.details ? `\n📝 ${o.details}` : '') });
+      });
       await interaction.editReply({ embeds: [embed] });
     }
     
@@ -332,15 +351,27 @@ client.on('interactionCreate', async interaction => {
       dealer = await col('dealers').findOne({ guildId: interaction.guild.id, id: dealerId });
     }
     
+    // ⭐ On stocke les infos par item (dealerId, dealerNom, flocage, details)
+    const orderItem = {
+      itemId: item.id,
+      nom: item.nom,
+      quantite: parseInt(qte),
+      type: item.type || 'item',
+      pack: item.pack || [],
+      flocage: flocage || '',
+      details: details || ''
+    };
+    if (dealer) {
+      orderItem.dealerId = dealer.id;
+      orderItem.dealerNom = dealer.nom;
+    }
+    
     const order = {
       guildId: interaction.guild.id,
       orderId: generateOrderId(),
       userId: interaction.user.id,
       userTag: interaction.user.tag,
-      items: [{ itemId: item.id, nom: item.nom, quantite: parseInt(qte), type: item.type || 'item', pack: item.pack || [] }],
-      details, flocage,
-      dealerId: dealer?.id || null,
-      dealerNom: dealer?.nom || null,
+      items: [orderItem],
       status: 'en_attente',
       createdAt: new Date().toISOString()
     };
@@ -351,9 +382,9 @@ client.on('interactionCreate', async interaction => {
     if (dealer?.nom) fields.push({ name: '🏢', value: dealer.nom });
     await sendWebhook(new EmbedBuilder().setTitle('🛒 Nouvelle commande').setColor(0xFEE75C).setDescription(`**${order.orderId}**`).addFields(fields));
     
-    // ─── Notification à la concession (webhook dédié) ───
+    // ─── Notification à la concession (webhook dédié, par item) ───
     if (dealer?.webhook) {
-      await notifyDealer(dealer, order, order.items[0]);
+      await notifyDealer(dealer, order, orderItem);
     }
     
     await interaction.update({ embeds: [new EmbedBuilder().setTitle('✅ Enregistrée').setColor(0x57F287).setDescription(`**${order.orderId}**\n${qte}x ${item.nom}${dealer?.nom ? `\n🏢 ${dealer.nom}` : ''}`)], components: [] });
@@ -514,25 +545,36 @@ app.post('/api/public/orders', async (req, res) => {
   const { guildId, userId, items, details, flocage, dealerId } = req.body;
   if (!guildId || !userId || !items?.length) return res.status(400).json({ error: 'Données manquantes' });
   
-  let dealer = null;
-  if (dealerId) {
-    dealer = await col('dealers').findOne({ guildId, id: dealerId });
+  // ⭐ Fallback : si dealerId global fourni, on l'applique aux items voiture qui n'en ont pas
+  const normalizedItems = items.map(it => {
+    const out = { ...it };
+    if (out.type === 'voiture' && !out.dealerId && dealerId) {
+      out.dealerId = dealerId;
+    }
+    return out;
+  });
+  
+  // Compléter les dealerNom manquants
+  for (const it of normalizedItems) {
+    if (it.dealerId && !it.dealerNom) {
+      const d = await col('dealers').findOne({ guildId, id: it.dealerId });
+      if (d) it.dealerNom = d.nom;
+    }
   }
   
   const order = {
     guildId, orderId: generateOrderId(), userId, userTag: userId,
-    items, details, flocage: flocage || '',
-    dealerId: dealer?.id || null,
-    dealerNom: dealer?.nom || null,
+    items: normalizedItems,
+    details: details || null,
+    flocage: flocage || null,
     status: 'en_attente', createdAt: new Date().toISOString()
   };
   await col('orders').insertOne(order);
   
-  // ─── Notification générale ───
+  // ─── Notification générale (webhook global) ───
   if (ORDER_WEBHOOK) {
     try {
-      const fields = [{ name: '👤', value: userId }, { name: '🛒', value: items.map(i => `${i.quantite}x ${i.nom}`).join('\n') }];
-      if (dealer?.nom) fields.push({ name: '🏢', value: dealer.nom });
+      const fields = [{ name: '👤', value: userId }, { name: '🛒', value: normalizedItems.map(i => `${i.quantite}x ${i.nom}`).join('\n') }];
       if (details) fields.push({ name: '📝', value: details });
       const embed = new EmbedBuilder().setTitle('🛒 Nouvelle commande (Site)').setColor(0xFEE75C).setDescription(`**${order.orderId}**`).addFields(fields);
       if (flocage) embed.setImage(flocage);
@@ -540,12 +582,8 @@ app.post('/api/public/orders', async (req, res) => {
     } catch {}
   }
   
-  // ─── Notification à la concession ───
-  if (dealer?.webhook) {
-    for (const item of items) {
-      await notifyDealer(dealer, order, item);
-    }
-  }
+  // ─── Notification à chaque concession concernée (webhook dédié, par item) ───
+  await notifyAllDealers(order);
   
   res.json({ success: true, orderId: order.orderId });
 });
