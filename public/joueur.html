@@ -56,7 +56,7 @@
     .order-items{font-size:15px;margin-bottom:10px}
     .order-details{font-size:13px;color:#8a9aa8;margin-top:10px;padding-top:10px;border-top:1px solid #1e2535}
     .modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.85);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px}
-    .modal-content{background:#141a24;border-radius:12px;padding:30px;max-width:500px;width:100%;max-height:90vh;overflow-y:auto}
+    .modal-content{background:#141a24;border-radius:12px;padding:30px;max-width:560px;width:100%;max-height:90vh;overflow-y:auto}
     .modal-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
     .modal-title{font-size:20px;font-weight:700;color:#fff}
     .modal-close{background:none;border:none;color:#4a5568;font-size:24px;cursor:pointer}
@@ -75,12 +75,28 @@
     .info-box{background:#5352ed22;border:1px solid #5352ed44;border-radius:8px;padding:15px;margin-bottom:25px;font-size:14px}
     .info-box strong{color:#a29bfe}
     .footer{text-align:center;margin-top:30px;color:#4a5568;font-size:13px}
-    .dealer-card{background:#1a1f2a;border:2px solid #1e2535;border-radius:10px;padding:15px;cursor:pointer;transition:all 0.2s}
-    .dealer-card:hover{border-color:#5352ed}
-    .dealer-card.selected{border-color:#2ed573;background:#2ed57315}
-    .dealer-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:20px}
-    .dealer-name{font-weight:700;font-size:14px;margin-bottom:5px}
-    .dealer-address{font-size:12px;color:#8a9aa8}
+    
+    /* ─── Dealer selection per car ─── */
+    .car-step{background:#1a1f2a;border:1px solid #1e2535;border-radius:10px;padding:15px;margin-bottom:15px}
+    .car-step-header{display:flex;align-items:center;gap:12px;margin-bottom:12px}
+    .car-step-img{width:50px;height:50px;border-radius:8px;object-fit:cover;background:#0b0f14}
+    .car-step-title{font-weight:700;font-size:15px}
+    .car-step-sub{font-size:12px;color:#8a9aa8}
+    .dealer-options{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px}
+    .dealer-option{background:#0b0f14;border:2px solid #1e2535;border-radius:8px;padding:10px 12px;cursor:pointer;transition:all 0.15s}
+    .dealer-option:hover{border-color:#5352ed}
+    .dealer-option.selected{border-color:#2ed573;background:#2ed57315}
+    .dealer-option-name{font-weight:600;font-size:13px;margin-bottom:3px}
+    .dealer-option-addr{font-size:11px;color:#8a9aa8}
+    .dealer-option-check{color:#2ed573;font-weight:bold;float:right;display:none}
+    .dealer-option.selected .dealer-option-check{display:inline}
+    
+    .step-indicator{display:flex;gap:8px;margin-bottom:20px;justify-content:center;flex-wrap:wrap}
+    .step-dot{padding:6px 12px;background:#1a1f2a;border-radius:20px;font-size:11px;color:#4a5568;font-weight:600}
+    .step-dot.active{background:#5352ed;color:#fff}
+    .step-dot.done{background:#2ed573;color:#000}
+    
+    .missing-dealer{color:#ff4757;font-size:13px;padding:10px;background:#ff475715;border-radius:6px;border:1px solid #ff475733}
   </style>
 </head>
 <body>
@@ -153,7 +169,7 @@
     </div>
   </div>
   
-  <!-- Modal commande (2 étapes : dealer si voiture, puis récap) -->
+  <!-- Modal commande -->
   <div id="order-modal" class="modal" style="display:none">
     <div class="modal-content">
       <div class="modal-header">
@@ -161,14 +177,24 @@
         <button class="modal-close" onclick="closeModal()">&times;</button>
       </div>
       
-      <!-- Étape concession (uniquement si voiture) -->
-      <div id="step-dealer" style="display:none">
-        <p style="color:#a29bfe;margin-bottom:15px;font-size:14px">🏢 Choisissez le concessionnaire où vous souhaitez récupérer votre voiture :</p>
-        <div class="dealer-grid" id="dealer-selection"></div>
+      <!-- Étape 1 : Choix concessions PAR voiture -->
+      <div id="step-dealers" style="display:none">
+        <div class="step-indicator">
+          <span class="step-dot active">🏢 Choix concessions</span>
+          <span class="step-dot">📋 Récap</span>
+        </div>
+        <p style="color:#a29bfe;margin-bottom:15px;font-size:14px">
+          Choisissez la concession pour <strong>chaque voiture</strong> de votre panier :
+        </p>
+        <div id="cars-dealer-selection"></div>
       </div>
       
-      <!-- Étape récap -->
+      <!-- Étape 2 : Récap + ID Discord + détails -->
       <div id="step-summary">
+        <div class="step-indicator">
+          <span class="step-dot" id="dot-1">🏢 Choix concessions</span>
+          <span class="step-dot active">📋 Récap</span>
+        </div>
         <div id="modal-items-summary" style="margin-bottom:20px"></div>
         <div class="form-group">
           <label>📱 Votre ID Discord *</label>
@@ -186,7 +212,8 @@
       
       <div class="modal-actions">
         <button onclick="closeModal()" style="padding:12px 20px;background:#1a1f2a;border:1px solid #1e2535;border-radius:8px;color:#fff;cursor:pointer">Annuler</button>
-        <button id="btn-next" onclick="goToDealerStep()" style="padding:12px 25px;background:#5352ed;border:none;border-radius:8px;color:#fff;font-weight:bold;cursor:pointer;display:none">Suivant ➡️</button>
+        <button id="btn-next" onclick="goToSummaryStep()" style="padding:12px 25px;background:#5352ed;border:none;border-radius:8px;color:#fff;font-weight:bold;cursor:pointer;display:none">Suivant ➡️</button>
+        <button id="btn-back" onclick="goToDealerStep()" style="padding:12px 20px;background:#1a1f2a;border:1px solid #1e2535;border-radius:8px;color:#fff;cursor:pointer;display:none">⬅️ Retour</button>
         <button id="btn-submit" onclick="submitOrder()" style="padding:12px 25px;background:#2ed573;border:none;border-radius:8px;color:#000;font-weight:bold;cursor:pointer">✅ Confirmer</button>
       </div>
     </div>
@@ -201,7 +228,9 @@
     let dealers = [];
     let currentCarSub = 'cars';
     let currentDiscordId = localStorage.getItem('rp_discord_id') || '';
-    let selectedDealerId = null;
+    
+    // ⭐ Sélections par voiture : { itemId: dealerId }
+    let dealerSelections = {};
     
     if (currentDiscordId) {
       document.getElementById('user-info').style.display = 'block';
@@ -380,90 +409,153 @@
       showToast(`✅ ${quantite}x ${nom} ajouté`, 'success');
     }
     
+    // ─── ORDER MODAL ───
     function openOrderModal() {
       if (cart.length === 0) { showToast('🛒 Panier vide', 'error'); return; }
-      selectedDealerId = null;
+      dealerSelections = {};
       
-      // Vérifier si le panier contient une voiture → étape concession obligatoire
       const hasCar = cart.some(c => c.type === 'voiture');
-      
-      const summary = document.getElementById('modal-items-summary');
-      summary.innerHTML = `
-        <div style="background:#1a1f2a;padding:15px;border-radius:8px">
-          <strong style="color:#a29bfe">📦 Articles sélectionnés :</strong>
-          <ul style="margin-top:10px;list-style:none">
-            ${cart.map(c => `<li style="padding:5px 0">• ${c.quantite}x ${c.nom}${c.item?.pack?.length ? ` <span style="color:#a29bfe;font-size:11px">(📦 ${c.item.pack.join(', ')})</span>` : ''}</li>`).join('')}
-          </ul>
-        </div>`;
       
       if (currentDiscordId) document.getElementById('order-discord-id').value = currentDiscordId;
       
       if (hasCar) {
-        // Afficher étape concession
-        document.getElementById('step-dealer').style.display = 'block';
+        // Vérifier que chaque voiture a des concessions disponibles
+        const carsWithNoDealer = cart.filter(c => c.type === 'voiture' && (!c.item?.dealers || c.item.dealers.length === 0));
+        if (carsWithNoDealer.length) {
+          showToast(`❌ ${carsWithNoDealer[0].nom} n'est dispo dans aucune concession`, 'error');
+          return;
+        }
+        
+        document.getElementById('step-dealers').style.display = 'block';
         document.getElementById('step-summary').style.display = 'none';
         document.getElementById('btn-next').style.display = 'inline-block';
+        document.getElementById('btn-back').style.display = 'none';
         document.getElementById('btn-submit').style.display = 'none';
-        document.getElementById('modal-title-text').textContent = '🏢 Choisir une concession';
-        renderDealerSelection();
+        document.getElementById('modal-title-text').textContent = '🏢 Choisir les concessions';
+        renderCarDealerSelection();
       } else {
-        document.getElementById('step-dealer').style.display = 'none';
+        document.getElementById('step-dealers').style.display = 'none';
         document.getElementById('step-summary').style.display = 'block';
         document.getElementById('btn-next').style.display = 'none';
+        document.getElementById('btn-back').style.display = 'none';
         document.getElementById('btn-submit').style.display = 'inline-block';
         document.getElementById('modal-title-text').textContent = '🛒 Passer commande';
+        updateSummary();
       }
       
       document.getElementById('order-modal').style.display = 'flex';
     }
     
-    function renderDealerSelection() {
-      const container = document.getElementById('dealer-selection');
-      if (!dealers.length) {
-        container.innerHTML = '<div style="color:#ff4757;text-align:center">⚠️ Aucun concessionnaire disponible. Impossible de commander une voiture.</div>';
+    // ⭐ Rendu : une carte par voiture avec uniquement SES concessions
+    function renderCarDealerSelection() {
+      const container = document.getElementById('cars-dealer-selection');
+      const carItems = cart.filter(c => c.type === 'voiture');
+      
+      if (!carItems.length) {
+        container.innerHTML = '<em style="color:#4a5568">Aucune voiture dans le panier</em>';
         return;
       }
-      container.innerHTML = dealers.map(d => `
-        <div class="dealer-card" data-id="${d.id}" onclick="selectDealer('${d.id}')">
-          <div class="dealer-name">🏢 ${d.nom}</div>
-          ${d.adresse ? `<div class="dealer-address">📍 ${d.adresse}</div>` : ''}
-        </div>
-      `).join('');
+      
+      container.innerHTML = carItems.map(car => {
+        // Filtrer les concessions qui possèdent CETTE voiture
+        const availableDealers = (car.item?.dealers || []).map(did => dealers.find(d => d.id === did)).filter(Boolean);
+        
+        if (!availableDealers.length) {
+          return `
+            <div class="car-step">
+              <div class="car-step-header">
+                <div class="car-step-img" style="display:flex;align-items:center;justify-content:center;font-size:24px">${car.item?.image ? `<img src="${car.item.image}" class="car-step-img">` : '🚗'}</div>
+                <div>
+                  <div class="car-step-title">${car.quantite}x ${car.nom}</div>
+                  <div class="car-step-sub">Aucune concession disponible</div>
+                </div>
+              </div>
+              <div class="missing-dealer">⚠️ Cette voiture n'est disponible dans aucune concession</div>
+            </div>
+          `;
+        }
+        
+        return `
+          <div class="car-step">
+            <div class="car-step-header">
+              ${car.item?.image ? `<img src="${car.item.image}" class="car-step-img">` : `<div class="car-step-img" style="display:flex;align-items:center;justify-content:center;font-size:24px">🚗</div>`}
+              <div>
+                <div class="car-step-title">${car.quantite}x ${car.nom}</div>
+                <div class="car-step-sub">${availableDealers.length} concession${availableDealers.length > 1 ? 's' : ''} disponible${availableDealers.length > 1 ? 's' : ''}</div>
+              </div>
+            </div>
+            <div class="dealer-options">
+              ${availableDealers.map(d => `
+                <div class="dealer-option" data-car="${car.id}" data-dealer="${d.id}" onclick="selectDealerForCar('${car.id}', '${d.id}')">
+                  <span class="dealer-option-check">✓</span>
+                  <div class="dealer-option-name">🏢 ${d.nom}</div>
+                  ${d.adresse ? `<div class="dealer-option-addr">📍 ${d.adresse}</div>` : ''}
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+      }).join('');
     }
     
-    function selectDealer(id) {
-      selectedDealerId = id;
-      document.querySelectorAll('.dealer-card').forEach(c => {
-        c.classList.toggle('selected', c.dataset.id === id);
+    // ⭐ Sélection par voiture
+    function selectDealerForCar(carId, dealerId) {
+      dealerSelections[carId] = dealerId;
+      document.querySelectorAll(`.dealer-option[data-car="${carId}"]`).forEach(opt => {
+        opt.classList.toggle('selected', opt.dataset.dealer === dealerId);
       });
-      document.getElementById('btn-next').disabled = false;
+    }
+    
+    function goToSummaryStep() {
+      const carItems = cart.filter(c => c.type === 'voiture');
+      // Vérifier que chaque voiture a bien une sélection
+      const missing = carItems.filter(c => !dealerSelections[c.id]);
+      if (missing.length) {
+        showToast(`❌ Choisissez une concession pour : ${missing.map(m => m.nom).join(', ')}`, 'error');
+        return;
+      }
+      
+      document.getElementById('step-dealers').style.display = 'none';
+      document.getElementById('step-summary').style.display = 'block';
+      document.getElementById('btn-next').style.display = 'none';
+      document.getElementById('btn-back').style.display = 'inline-block';
+      document.getElementById('btn-submit').style.display = 'inline-block';
+      document.getElementById('modal-title-text').textContent = '🛒 Passer commande';
+      updateSummary();
     }
     
     function goToDealerStep() {
-      if (!selectedDealerId) { showToast('❌ Choisissez un concessionnaire', 'error'); return; }
-      const dealer = dealers.find(d => d.id === selectedDealerId);
+      document.getElementById('step-dealers').style.display = 'block';
+      document.getElementById('step-summary').style.display = 'none';
+      document.getElementById('btn-next').style.display = 'inline-block';
+      document.getElementById('btn-back').style.display = 'none';
+      document.getElementById('btn-submit').style.display = 'none';
+      document.getElementById('modal-title-text').textContent = '🏢 Choisir les concessions';
+    }
+    
+    function updateSummary() {
       const summary = document.getElementById('modal-items-summary');
       summary.innerHTML = `
         <div style="background:#1a1f2a;padding:15px;border-radius:8px">
-          <strong style="color:#a29bfe">📦 Articles :</strong>
+          <strong style="color:#a29bfe">📦 Articles sélectionnés :</strong>
           <ul style="margin-top:10px;list-style:none">
-            ${cart.map(c => `<li style="padding:5px 0">• ${c.quantite}x ${c.nom}</li>`).join('')}
+            ${cart.map(c => {
+              let line = `• ${c.quantite}x ${c.nom}`;
+              if (c.item?.pack?.length) line += ` <span style="color:#a29bfe;font-size:11px">(📦 ${c.item.pack.join(', ')})</span>`;
+              const dId = dealerSelections[c.id];
+              if (dId) {
+                const d = dealers.find(x => x.id === dId);
+                if (d) line += `<br><span style="color:#ffd32a;font-size:12px;margin-left:15px">🏢 ${d.nom}${d.adresse ? ` — 📍 ${d.adresse}` : ''}</span>`;
+              }
+              return `<li style="padding:5px 0">${line}</li>`;
+            }).join('')}
           </ul>
-          <div style="margin-top:10px;padding-top:10px;border-top:1px solid #1e2535">
-            <strong style="color:#ffd32a">🏢 Concession :</strong> ${dealer?.nom || ''}
-            ${dealer?.adresse ? `<br><small style="color:#8a9aa8">📍 ${dealer.adresse}</small>` : ''}
-          </div>
         </div>`;
-      document.getElementById('step-dealer').style.display = 'none';
-      document.getElementById('step-summary').style.display = 'block';
-      document.getElementById('btn-next').style.display = 'none';
-      document.getElementById('btn-submit').style.display = 'inline-block';
-      document.getElementById('modal-title-text').textContent = '🛒 Passer commande';
     }
     
     function closeModal() {
       document.getElementById('order-modal').style.display = 'none';
-      selectedDealerId = null;
+      dealerSelections = {};
     }
     
     async function submitOrder() {
@@ -471,9 +563,10 @@
       const details = document.getElementById('order-details').value.trim();
       const flocage = document.getElementById('order-flocage').value.trim();
       
-      // Vérifier si voiture dans le panier → dealer obligatoire
-      const hasCar = cart.some(c => c.type === 'voiture');
-      if (hasCar && !selectedDealerId) { showToast('❌ Choisissez un concessionnaire', 'error'); return; }
+      // Vérifier les voitures
+      const carItems = cart.filter(c => c.type === 'voiture');
+      const missing = carItems.filter(c => !dealerSelections[c.id]);
+      if (missing.length) { showToast(`❌ Choisissez une concession pour : ${missing.map(m => m.nom).join(', ')}`, 'error'); return; }
       
       if (!discordId) { showToast('❌ ID Discord requis', 'error'); return; }
       if (!/^\d{17,19}$/.test(discordId)) { showToast('❌ ID Discord invalide', 'error'); return; }
@@ -484,13 +577,29 @@
       document.getElementById('user-info').style.display = 'block';
       document.getElementById('user-id-display').textContent = discordId;
       
+      // ⭐ Construire les items avec dealerId par item
+      const orderItems = cart.map(c => {
+        const item = {
+          itemId: c.id,
+          nom: c.nom,
+          quantite: c.quantite,
+          type: c.type,
+          pack: c.item?.pack || []
+        };
+        if (c.type === 'voiture' && dealerSelections[c.id]) {
+          const d = dealers.find(x => x.id === dealerSelections[c.id]);
+          item.dealerId = d?.id || null;
+          item.dealerNom = d?.nom || null;
+        }
+        return item;
+      });
+      
       const orderData = {
         guildId,
         userId: discordId,
-        items: cart.map(c => ({ itemId: c.id, nom: c.nom, quantite: c.quantite, type: c.type, pack: c.item?.pack || [] })),
+        items: orderItems,
         details: details || null,
-        flocage: flocage || null,
-        dealerId: selectedDealerId || null
+        flocage: flocage || null
       };
       
       try {
@@ -499,6 +608,7 @@
         if (!res.ok) throw new Error(data.error || 'Erreur');
         showToast(`✅ Commande ${data.orderId} enregistrée !`, 'success');
         cart = [];
+        dealerSelections = {};
         closeModal();
         showTab('suivi');
         document.getElementById('discord-id-search').value = discordId;
@@ -524,7 +634,13 @@
         const statusLabels = { 'en_attente': '🟡 En attente', 'validee': '🟢 Validée', 'livree': '✅ Livrée', 'refusee': '🔴 Refusée' };
         let html = '';
         orders.forEach(order => {
-          const items = order.items.map(i => `${i.quantite}x ${i.nom}${i.pack?.length ? ` <span style="color:#a29bfe;font-size:11px">(📦 ${i.pack.join(', ')})</span>` : ''}`).join('<br>');
+          const items = order.items.map(i => {
+            let line = `${i.quantite}x ${i.nom}`;
+            if (i.pack?.length) line += ` <span style="color:#a29bfe;font-size:11px">(📦 ${i.pack.join(', ')})</span>`;
+            // ⭐ Afficher la concession PAR voiture
+            if (i.dealerNom) line += `<br><span style="color:#ffd32a;font-size:12px;margin-left:15px">🏢 ${i.dealerNom}</span>`;
+            return line;
+          }).join('<br>');
           const date = new Date(order.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
           html += `
             <div class="order-card">
@@ -536,7 +652,6 @@
                 <div class="order-items">${items}</div>
                 <span class="status ${order.status}">${statusLabels[order.status] || order.status}</span>
               </div>
-              ${order.dealerNom ? `<div class="order-details" style="color:#ffd32a">🏢 ${order.dealerNom}</div>` : ''}
               ${order.details ? `<div class="order-details">📝 ${order.details}</div>` : ''}
               ${order.flocage ? `<div class="order-details">🖼️ Flocage : <a href="${order.flocage}" target="_blank" style="color:#a29bfe">${order.flocage}</a></div>` : ''}
               ${order.status === 'refusee' && order.raisonRefus ? `<div class="order-details" style="color:#ff4757">❌ ${order.raisonRefus}</div>` : ''}
