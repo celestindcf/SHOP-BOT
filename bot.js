@@ -39,11 +39,41 @@ const client = new Client({
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function generateOrderId() { return 'CMD-' + uuidv4().slice(0, 8).toUpperCase(); }
-async function sendWebhook(embed) {
-  if (!ORDER_WEBHOOK) return;
-  try { await fetch(ORDER_WEBHOOK, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ embeds: [embed] }) }); } catch (e) {}
+
+async function sendWebhook(embed, webhookUrl = ORDER_WEBHOOK) {
+  if (!webhookUrl) return;
+  try {
+    await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ embeds: [embed] })
+    });
+  } catch (e) { console.error('Webhook error:', e.message); }
 }
+
 function slugify(str) { return str.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, ''); }
+
+// ─── Envoi du bon de commande à la concession ────────────────────────────────
+async function notifyDealer(dealer, order, item) {
+  if (!dealer?.webhook) return;
+  const embed = new EmbedBuilder()
+    .setTitle('🛒 Nouvelle commande — Bon de commande')
+    .setColor(0xFEE75C)
+    .setDescription(`Commande **${order.orderId}**\nConcession : **${dealer.nom}**`)
+    .addFields(
+      { name: '👤 Client', value: `<@${order.userId}> (\`${order.userId}\`)`, inline: true },
+      { name: '🚗 Véhicule', value: `${item.quantite}x ${item.nom}`, inline: true }
+    )
+    .setTimestamp(new Date(order.createdAt));
+  if (item.pack?.length) embed.addFields({ name: '📦 Pack inclus', value: item.pack.join(', ') });
+  if (order.details) embed.addFields({ name: '📝 Détails', value: order.details });
+  if (order.flocage) {
+    embed.addFields({ name: '🖼️ Flocage', value: order.flocage });
+    embed.setImage(order.flocage);
+  }
+  embed.setFooter({ text: `ID commande : ${order.orderId}` });
+  await sendWebhook(embed, dealer.webhook);
+}
 
 // ─── Slash Commands ───────────────────────────────────────────────────────────
 const commands = [
@@ -58,7 +88,7 @@ const commands = [
   new SlashCommandBuilder().setName('addarticle').setDescription('[ADMIN] Ajouter un article').addStringOption(o => o.setName('nom').setDescription('Nom').setRequired(true)).addStringOption(o => o.setName('categorie').setDescription('Catégorie').setRequired(true)).addIntegerOption(o => o.setName('prix').setDescription('Prix').setRequired(false)).addStringOption(o => o.setName('description').setDescription('Description').setRequired(false)).addStringOption(o => o.setName('image').setDescription('URL image').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('addvoiture').setDescription('[ADMIN] Ajouter une voiture').addStringOption(o => o.setName('nom').setDescription('Nom').setRequired(true)).addStringOption(o => o.setName('categorie').setDescription('Catégorie').setRequired(true)).addIntegerOption(o => o.setName('prix').setDescription('Prix').setRequired(false)).addStringOption(o => o.setName('description').setDescription('Description').setRequired(false)).addStringOption(o => o.setName('image').setDescription('URL image').setRequired(false)).addStringOption(o => o.setName('pack').setDescription('Pack inclus (séparés par virgule)').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('addaccessoire').setDescription('[ADMIN] Ajouter un accessoire').addStringOption(o => o.setName('nom').setDescription('Nom').setRequired(true)).addStringOption(o => o.setName('categorie').setDescription('Catégorie').setRequired(true)).addIntegerOption(o => o.setName('prix').setDescription('Prix').setRequired(false)).addStringOption(o => o.setName('description').setDescription('Description').setRequired(false)).addStringOption(o => o.setName('image').setDescription('URL image').setRequired(false)).addStringOption(o => o.setName('flocage').setDescription('URL flocage').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-  new SlashCommandBuilder().setName('addconcession').setDescription('[ADMIN] Ajouter un concessionnaire').addStringOption(o => o.setName('nom').setDescription('Nom').setRequired(true)).addStringOption(o => o.setName('adresse').setDescription('Adresse / Localisation').setRequired(false)).addStringOption(o => o.setName('image').setDescription('URL image').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('addconcession').setDescription('[ADMIN] Ajouter un concessionnaire').addStringOption(o => o.setName('nom').setDescription('Nom').setRequired(true)).addStringOption(o => o.setName('adresse').setDescription('Adresse / Localisation').setRequired(false)).addStringOption(o => o.setName('image').setDescription('URL image').setRequired(false)).addStringOption(o => o.setName('webhook').setDescription('URL webhook Discord').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('removearticle').setDescription('[ADMIN] Supprimer un article/voiture/accessoire').addStringOption(o => o.setName('id').setDescription('ID').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('removeconcession').setDescription('[ADMIN] Supprimer un concessionnaire').addStringOption(o => o.setName('id').setDescription('ID concession').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   new SlashCommandBuilder().setName('editarticle').setDescription('[ADMIN] Modifier un article').addStringOption(o => o.setName('id').setDescription('ID').setRequired(true)).addIntegerOption(o => o.setName('prix').setDescription('Prix').setRequired(false)).addStringOption(o => o.setName('description').setDescription('Description').setRequired(false)).addStringOption(o => o.setName('categorie').setDescription('Catégorie').setRequired(false)).addStringOption(o => o.setName('pack').setDescription('Pack').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
@@ -109,6 +139,7 @@ client.on('interactionCreate', async interaction => {
       dealers.forEach(d => {
         let val = d.adresse ? `📍 ${d.adresse}\n` : '';
         val += `\`${d.id}\``;
+        if (d.webhook) val += `\n🔔 Webhook : ✅`;
         embed.addFields({ name: `🏢 ${d.nom}`, value: val });
       });
       await interaction.editReply({ embeds: [embed] });
@@ -122,8 +153,6 @@ client.on('interactionCreate', async interaction => {
       const item = (await col('shop').findOne({ guildId: guild.id }))?.items?.find(i => i.id.toLowerCase() === query || i.nom.toLowerCase().includes(query));
       if (!item) return interaction.editReply({ content: '❌ Introuvable.' });
       
-      // Si voiture : on doit choisir un concessionnaire
-      let dealer = null;
       if (item.type === 'voiture' && item.dealers?.length) {
         const dealers = await col('dealers').find({ guildId: guild.id, id: { $in: item.dealers } }).toArray();
         if (!dealers.length) return interaction.editReply({ content: '❌ Aucun concessionnaire ne vend cette voiture.' });
@@ -211,9 +240,16 @@ client.on('interactionCreate', async interaction => {
     }
     
     if (commandName === 'addconcession') {
-      const dealer = { id: slugify(options.getString('nom')) + '-' + uuidv4().slice(0,4), nom: options.getString('nom'), adresse: options.getString('adresse') || '', image: options.getString('image') || '', createdAt: new Date().toISOString() };
+      const dealer = {
+        id: slugify(options.getString('nom')) + '-' + uuidv4().slice(0,4),
+        nom: options.getString('nom'),
+        adresse: options.getString('adresse') || '',
+        image: options.getString('image') || '',
+        webhook: options.getString('webhook') || '',
+        createdAt: new Date().toISOString()
+      };
       await col('dealers').insertOne({ guildId: guild.id, ...dealer });
-      await interaction.editReply({ content: `🏢 ${dealer.nom} ajouté (ID: \`${dealer.id}\`)` });
+      await interaction.editReply({ content: `🏢 ${dealer.nom} ajouté (ID: \`${dealer.id}\`)${dealer.webhook ? '\n🔔 Webhook configuré' : ''}` });
     }
     
     if (commandName === 'removearticle') {
@@ -243,10 +279,8 @@ client.on('interactionCreate', async interaction => {
 
 // ─── Buttons & Select Menus ───────────────────────────────────────────────────
 client.on('interactionCreate', async interaction => {
-  // Select concessionnaire
   if (interaction.isStringSelectMenu() && interaction.customId.startsWith('select_dealer_')) {
     const parts = interaction.customId.split('_');
-    // select_dealer_<itemId>_<qte>_<details>_<flocage>
     const itemId = parts[2];
     const qte = parts[3];
     const det = parts[4];
@@ -293,10 +327,9 @@ client.on('interactionCreate', async interaction => {
     const item = (await col('shop').findOne({ guildId: interaction.guild.id }))?.items?.find(i => i.id === id);
     if (!item) return interaction.update({ content: '❌ Introuvable.', embeds: [], components: [] });
     
-    let dealerNom = null, dealerIdFinal = null;
+    let dealer = null;
     if (dealerId && dealerId !== 'none') {
-      const d = await col('dealers').findOne({ guildId: interaction.guild.id, id: dealerId });
-      if (d) { dealerNom = d.nom; dealerIdFinal = d.id; }
+      dealer = await col('dealers').findOne({ guildId: interaction.guild.id, id: dealerId });
     }
     
     const order = {
@@ -306,18 +339,24 @@ client.on('interactionCreate', async interaction => {
       userTag: interaction.user.tag,
       items: [{ itemId: item.id, nom: item.nom, quantite: parseInt(qte), type: item.type || 'item', pack: item.pack || [] }],
       details, flocage,
-      dealerId: dealerIdFinal,
-      dealerNom,
+      dealerId: dealer?.id || null,
+      dealerNom: dealer?.nom || null,
       status: 'en_attente',
       createdAt: new Date().toISOString()
     };
     await col('orders').insertOne(order);
     
+    // ─── Notification générale (webhook global) ───
     const fields = [{ name: '👤', value: `<@${interaction.user.id}>` }, { name: '🛒', value: `${qte}x ${item.nom}` }];
-    if (dealerNom) fields.push({ name: '🏢', value: dealerNom });
+    if (dealer?.nom) fields.push({ name: '🏢', value: dealer.nom });
     await sendWebhook(new EmbedBuilder().setTitle('🛒 Nouvelle commande').setColor(0xFEE75C).setDescription(`**${order.orderId}**`).addFields(fields));
     
-    await interaction.update({ embeds: [new EmbedBuilder().setTitle('✅ Enregistrée').setColor(0x57F287).setDescription(`**${order.orderId}**\n${qte}x ${item.nom}${dealerNom ? `\n🏢 ${dealerNom}` : ''}`)], components: [] });
+    // ─── Notification à la concession (webhook dédié) ───
+    if (dealer?.webhook) {
+      await notifyDealer(dealer, order, order.items[0]);
+    }
+    
+    await interaction.update({ embeds: [new EmbedBuilder().setTitle('✅ Enregistrée').setColor(0x57F287).setDescription(`**${order.orderId}**\n${qte}x ${item.nom}${dealer?.nom ? `\n🏢 ${dealer.nom}` : ''}`)], components: [] });
   }
 });
 
@@ -353,20 +392,29 @@ app.get('/api/dealers', async (req, res) => {
 });
 
 app.post('/api/dealers', async (req, res) => {
-  const { guild, nom, adresse, image } = req.body;
+  const { guild, nom, adresse, image, webhook } = req.body;
   if (!guild || !nom) return res.status(400).json({ error: 'Nom requis' });
-  const dealer = { guildId: guild, id: slugify(nom) + '-' + uuidv4().slice(0,4), nom, adresse: adresse || '', image: image || '', createdAt: new Date().toISOString() };
+  const dealer = {
+    guildId: guild,
+    id: slugify(nom) + '-' + uuidv4().slice(0,4),
+    nom,
+    adresse: adresse || '',
+    image: image || '',
+    webhook: webhook || '',
+    createdAt: new Date().toISOString()
+  };
   await col('dealers').insertOne(dealer);
   res.json(dealer);
 });
 
 app.patch('/api/dealers/:id', async (req, res) => {
-  const { guild, nom, adresse, image } = req.body;
+  const { guild, nom, adresse, image, webhook } = req.body;
   if (!guild) return res.status(400).json({ error: 'Guild ID requis' });
   const upd = {};
   if (nom) upd.nom = nom;
   if (adresse !== undefined) upd.adresse = adresse;
   if (image !== undefined) upd.image = image;
+  if (webhook !== undefined) upd.webhook = webhook;
   await col('dealers').updateOne({ guildId: guild, id: req.params.id }, { $set: upd });
   res.json({ success: true });
 });
@@ -450,8 +498,10 @@ app.get('/api/public/shop/:guildId', async (req, res) => {
   res.json(items);
 });
 
+// ⚠️ On ne renvoie PAS le webhook dans l'API publique (sécurité)
 app.get('/api/public/dealers/:guildId', async (req, res) => {
-  res.json(await col('dealers').find({ guildId: req.params.guildId }).sort({ createdAt: 1 }).toArray());
+  const dealers = await col('dealers').find({ guildId: req.params.guildId }).sort({ createdAt: 1 }).toArray();
+  res.json(dealers.map(d => ({ id: d.id, nom: d.nom, adresse: d.adresse, image: d.image })));
 });
 
 app.get('/api/public/orders/:userId', async (req, res) => {
@@ -464,30 +514,39 @@ app.post('/api/public/orders', async (req, res) => {
   const { guildId, userId, items, details, flocage, dealerId } = req.body;
   if (!guildId || !userId || !items?.length) return res.status(400).json({ error: 'Données manquantes' });
   
-  let dealerNom = null;
+  let dealer = null;
   if (dealerId) {
-    const d = await col('dealers').findOne({ guildId, id: dealerId });
-    if (d) dealerNom = d.nom;
+    dealer = await col('dealers').findOne({ guildId, id: dealerId });
   }
   
   const order = {
     guildId, orderId: generateOrderId(), userId, userTag: userId,
     items, details, flocage: flocage || '',
-    dealerId: dealerId || null, dealerNom,
+    dealerId: dealer?.id || null,
+    dealerNom: dealer?.nom || null,
     status: 'en_attente', createdAt: new Date().toISOString()
   };
   await col('orders').insertOne(order);
   
+  // ─── Notification générale ───
   if (ORDER_WEBHOOK) {
     try {
       const fields = [{ name: '👤', value: userId }, { name: '🛒', value: items.map(i => `${i.quantite}x ${i.nom}`).join('\n') }];
-      if (dealerNom) fields.push({ name: '🏢', value: dealerNom });
+      if (dealer?.nom) fields.push({ name: '🏢', value: dealer.nom });
       if (details) fields.push({ name: '📝', value: details });
       const embed = new EmbedBuilder().setTitle('🛒 Nouvelle commande (Site)').setColor(0xFEE75C).setDescription(`**${order.orderId}**`).addFields(fields);
       if (flocage) embed.setImage(flocage);
-      await fetch(ORDER_WEBHOOK, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ embeds: [embed.toJSON()] }) });
+      await sendWebhook(embed, ORDER_WEBHOOK);
     } catch {}
   }
+  
+  // ─── Notification à la concession ───
+  if (dealer?.webhook) {
+    for (const item of items) {
+      await notifyDealer(dealer, order, item);
+    }
+  }
+  
   res.json({ success: true, orderId: order.orderId });
 });
 
