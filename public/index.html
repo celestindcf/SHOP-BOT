@@ -9,7 +9,6 @@
     body{background:#0b0f14;color:#e0e0e0;font-family:'Segoe UI',sans-serif;padding:20px}
     .container{max-width:1400px;margin:0 auto}
     h1{color:#ff4757;margin-bottom:10px}
-    h2{color:#a29bfe;margin-bottom:15px;font-size:18px}
     .card{background:#141a24;border:1px solid #1e2535;border-radius:8px;padding:20px;margin-bottom:20px}
     table{width:100%;border-collapse:collapse}
     th,td{padding:12px;text-align:left;border-bottom:1px solid #1e2535}
@@ -30,7 +29,12 @@
     .tab.active{background:#5352ed}
     input,select,textarea{width:100%;padding:12px;background:#1a1f2a;border:1px solid #1e2535;border-radius:6px;color:#fff;margin-bottom:15px}
     .pack-tag{display:inline-block;background:#5352ed33;color:#a29bfe;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px}
+    .dealer-tag{display:inline-block;background:#ffd32a22;color:#ffd32a;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px}
     .flocage-preview{max-width:60px;max-height:60px;border-radius:4px;object-fit:cover}
+    .checkbox-list{max-height:200px;overflow-y:auto;border:1px solid #1e2535;border-radius:6px;padding:10px;background:#0b0f14;margin-bottom:15px}
+    .checkbox-item{display:flex;align-items:center;gap:10px;padding:8px;border-radius:4px;cursor:pointer}
+    .checkbox-item:hover{background:#1a1f2a}
+    .checkbox-item input{width:auto;margin:0}
   </style>
 </head>
 <body>
@@ -43,6 +47,7 @@
         <button class="tab" onclick="showTab('catalogue', event)">📦 Articles</button>
         <button class="tab" onclick="showTab('cars', event)">🚗 Voitures</button>
         <button class="tab" onclick="showTab('accessories', event)">🔧 Accessoires</button>
+        <button class="tab" onclick="showTab('dealers', event)">🏢 Concessions</button>
       </div>
       
       <!-- Commandes -->
@@ -58,7 +63,7 @@
         </div>
         <div class="card">
           <table id="orders-table">
-            <thead><tr><th>ID</th><th>Client</th><th>Articles</th><th>Détails</th><th>Flocage</th><th>Date</th><th>Statut</th><th>Actions</th></tr></thead>
+            <thead><tr><th>ID</th><th>Client</th><th>Articles</th><th>Concession</th><th>Détails</th><th>Date</th><th>Statut</th><th>Actions</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -84,7 +89,7 @@
         </div>
         <div class="card">
           <table id="cars-table">
-            <thead><tr><th>Image</th><th>Nom</th><th>Catégorie</th><th>Prix</th><th>Pack inclus</th><th>Flocage</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Image</th><th>Nom</th><th>Catégorie</th><th>Prix</th><th>Pack inclus</th><th>Concessions</th><th>Actions</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -102,12 +107,25 @@
           </table>
         </div>
       </div>
+      
+      <!-- Concessions -->
+      <div id="tab-dealers" style="display:none">
+        <div class="flex" style="margin-bottom:15px">
+          <button class="btn-primary" onclick="openDealerModal()">➕ Nouveau concessionnaire</button>
+        </div>
+        <div class="card">
+          <table id="dealers-table">
+            <thead><tr><th>Image</th><th>Nom</th><th>Adresse</th><th>Voitures dispo</th><th>Actions</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
     </div>
   </div>
   
-  <!-- Modal Ajout -->
+  <!-- Modal Ajout article/voiture/accessoire -->
   <div id="add-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);align-items:center;justify-content:center;z-index:1000;padding:20px">
-    <div style="background:#141a24;padding:25px;border-radius:8px;max-width:500px;width:100%;max-height:90vh;overflow-y:auto">
+    <div style="background:#141a24;padding:25px;border-radius:8px;max-width:550px;width:100%;max-height:90vh;overflow-y:auto">
       <h3 style="margin-bottom:20px;color:#a29bfe" id="modal-title">➕ Ajouter</h3>
       <input type="text" id="item-nom" placeholder="Nom *">
       <input type="text" id="item-categorie" placeholder="Catégorie *">
@@ -121,18 +139,38 @@
       <div id="flocage-field" style="display:none">
         <input type="text" id="item-flocage" placeholder="URL image flocage (optionnel)">
       </div>
+      <div id="dealers-field" style="display:none">
+        <label style="display:block;color:#a29bfe;font-size:13px;margin-bottom:8px">🏢 Concessions où la voiture est disponible</label>
+        <div class="checkbox-list" id="dealers-checkboxes"></div>
+      </div>
       <div style="display:flex;gap:10px;margin-top:20px">
         <button class="btn-primary" onclick="addItem()">Ajouter</button>
         <button onclick="closeModal()" style="background:#1a1f2a;color:#fff">Annuler</button>
       </div>
     </div>
   </div>
+  
+  <!-- Modal Concession -->
+  <div id="dealer-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);align-items:center;justify-content:center;z-index:1000;padding:20px">
+    <div style="background:#141a24;padding:25px;border-radius:8px;max-width:500px;width:100%">
+      <h3 style="margin-bottom:20px;color:#a29bfe" id="dealer-modal-title">🏢 Nouveau concessionnaire</h3>
+      <input type="text" id="dealer-nom" placeholder="Nom *">
+      <input type="text" id="dealer-adresse" placeholder="Adresse / Localisation">
+      <input type="text" id="dealer-image" placeholder="URL Image (optionnel)">
+      <div style="display:flex;gap:10px;margin-top:20px">
+        <button class="btn-primary" onclick="saveDealer()">Enregistrer</button>
+        <button onclick="closeDealerModal()" style="background:#1a1f2a;color:#fff">Annuler</button>
+      </div>
+    </div>
+  </div>
 
   <script>
     const guildId = new URLSearchParams(location.search).get('guild') || '';
-    let orders = [], items = [], cars = [], accessories = [];
+    let orders = [], items = [], cars = [], accessories = [], dealers = [];
     let currentType = 'item';
+    let editingDealerId = null;
     
+    // ─── ORDERS ───
     async function loadOrders() {
       const res = await fetch(`/api/orders?guild=${guildId}`);
       orders = await res.json();
@@ -144,26 +182,91 @@
           <td><code>${o.orderId}</code></td>
           <td>${o.userTag || o.userId}</td>
           <td>${o.items.map(i => `${i.quantite}x ${i.nom}${i.pack?.length ? ` <span class="pack-tag">📦 ${i.pack.join(', ')}</span>` : ''}`).join('<br>')}</td>
-          <td>${o.details || '-'}</td>
-          <td>${o.flocage ? `<a href="${o.flocage}" target="_blank"><img src="${o.flocage}" class="flocage-preview"></a>` : '-'}</td>
+          <td>${o.dealerNom ? `<span class="dealer-tag">🏢 ${o.dealerNom}</span>` : '-'}</td>
+          <td>${o.details || '-'}${o.flocage ? `<br><a href="${o.flocage}" target="_blank"><img src="${o.flocage}" class="flocage-preview"></a>` : ''}</td>
           <td>${new Date(o.createdAt).toLocaleDateString('fr-FR')}</td>
           <td><span class="status ${o.status}">${st[o.status]}</span></td>
           <td>${o.status==='en_attente'?`<button class="btn-success" onclick="updateOrder('${o.orderId}','validee')">✅</button>`:''}${o.status==='validee'?`<button class="btn-primary" onclick="updateOrder('${o.orderId}','livree')">🚚</button>`:''}${o.status==='en_attente'?`<button class="btn-danger" onclick="refuseOrder('${o.orderId}')">❌</button>`:''}</td>
         </tr>
       `).join('');
     }
-    
     async function updateOrder(id, status) {
       await fetch(`/api/orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ guild: guildId, status }) });
       loadOrders();
     }
-    
     async function refuseOrder(id) {
       const raison = prompt('Raison (optionnel) :') || 'Aucune';
       await fetch(`/api/orders/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ guild: guildId, status: 'refusee', raisonRefus: raison }) });
       loadOrders();
     }
     
+    // ─── DEALERS ───
+    async function loadDealers() {
+      const res = await fetch(`/api/dealers?guild=${guildId}`);
+      dealers = await res.json();
+      const carsRes = await fetch(`/api/cars?guild=${guildId}`);
+      const allCars = await carsRes.json();
+      
+      document.querySelector('#dealers-table tbody').innerHTML = dealers.map(d => {
+        const carsInDealer = allCars.filter(c => c.dealers?.includes(d.id));
+        return `
+        <tr>
+          <td>${d.image ? `<img src="${d.image}" style="width:50px;height:40px;object-fit:cover;border-radius:4px">` : '🏢'}</td>
+          <td><strong>${d.nom}</strong><br><code>${d.id}</code></td>
+          <td>${d.adresse || '-'}</td>
+          <td>${carsInDealer.length ? carsInDealer.map(c => `<span class="dealer-tag">${c.nom}</span>`).join('') : '<em style="color:#4a5568">Aucune</em>'}</td>
+          <td><button class="btn-warning" onclick="editDealer('${d.id}')">✏️</button><button class="btn-danger" onclick="deleteDealer('${d.id}')">🗑️</button></td>
+        </tr>`;
+      }).join('');
+    }
+    
+    function openDealerModal() {
+      editingDealerId = null;
+      document.getElementById('dealer-modal-title').textContent = '🏢 Nouveau concessionnaire';
+      document.getElementById('dealer-nom').value = '';
+      document.getElementById('dealer-adresse').value = '';
+      document.getElementById('dealer-image').value = '';
+      document.getElementById('dealer-modal').style.display = 'flex';
+    }
+    function closeDealerModal() { document.getElementById('dealer-modal').style.display = 'none'; editingDealerId = null; }
+    
+    function editDealer(id) {
+      const d = dealers.find(x => x.id === id);
+      if (!d) return;
+      editingDealerId = id;
+      document.getElementById('dealer-modal-title').textContent = '✏️ Modifier concessionnaire';
+      document.getElementById('dealer-nom').value = d.nom || '';
+      document.getElementById('dealer-adresse').value = d.adresse || '';
+      document.getElementById('dealer-image').value = d.image || '';
+      document.getElementById('dealer-modal').style.display = 'flex';
+    }
+    
+    async function saveDealer() {
+      const nom = document.getElementById('dealer-nom').value.trim();
+      if (!nom) return alert('Nom requis');
+      const body = {
+        guild: guildId,
+        nom,
+        adresse: document.getElementById('dealer-adresse').value,
+        image: document.getElementById('dealer-image').value
+      };
+      if (editingDealerId) {
+        await fetch(`/api/dealers/${editingDealerId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      } else {
+        await fetch('/api/dealers', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+      }
+      closeDealerModal();
+      loadDealers();
+      loadCars();
+    }
+    
+    async function deleteDealer(id) {
+      if (!confirm('Supprimer ce concessionnaire ?')) return;
+      await fetch(`/api/dealers/${id}?guild=${guildId}`, { method: 'DELETE' });
+      loadDealers(); loadCars();
+    }
+    
+    // ─── SHOP ───
     async function loadShop() {
       const res = await fetch(`/api/shop?guild=${guildId}&type=item`);
       items = await res.json();
@@ -176,17 +279,22 @@
     async function loadCars() {
       const res = await fetch(`/api/cars?guild=${guildId}`);
       cars = await res.json();
-      document.querySelector('#cars-table tbody').innerHTML = cars.map(i => `
+      document.querySelector('#cars-table tbody').innerHTML = cars.map(i => {
+        const carDealers = (i.dealers || []).map(did => {
+          const d = dealers.find(x => x.id === did);
+          return d ? `<span class="dealer-tag">🏢 ${d.nom}</span>` : '';
+        }).join('');
+        return `
         <tr>
           <td>${i.image ? `<img src="${i.image}" style="width:50px;height:40px;object-fit:cover;border-radius:4px">` : '🚗'}</td>
           <td><strong>${i.nom}</strong><br><code>${i.id}</code></td>
           <td>${i.categorie||'-'}</td>
           <td>${i.prix ? i.prix+'💰' : '-'}</td>
           <td>${i.pack?.length ? i.pack.map(p => `<span class="pack-tag">${p}</span>`).join('') : '-'}</td>
-          <td>${i.flocageImage ? `<a href="${i.flocageImage}" target="_blank"><img src="${i.flocageImage}" class="flocage-preview"></a>` : '-'}</td>
+          <td>${carDealers || '<em style="color:#4a5568">Aucune</em>'}</td>
           <td><button class="btn-warning" onclick="editItem('${i.id}')">✏️</button><button class="btn-danger" onclick="deleteItem('${i.id}')">🗑️</button></td>
-        </tr>
-      `).join('');
+        </tr>`;
+      }).join('');
     }
     
     async function loadAccessories() {
@@ -208,10 +316,9 @@
     function showTab(t, ev) {
       document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
       if (ev) ev.target.classList.add('active');
-      document.getElementById('tab-orders').style.display = t === 'orders' ? 'block' : 'none';
-      document.getElementById('tab-catalogue').style.display = t === 'catalogue' ? 'block' : 'none';
-      document.getElementById('tab-cars').style.display = t === 'cars' ? 'block' : 'none';
-      document.getElementById('tab-accessories').style.display = t === 'accessories' ? 'block' : 'none';
+      ['orders','catalogue','cars','accessories','dealers'].forEach(x => {
+        document.getElementById('tab-' + x).style.display = x === t ? 'block' : 'none';
+      });
     }
     
     function openAddModal(type) {
@@ -219,6 +326,7 @@
       document.getElementById('modal-title').textContent = type === 'voiture' ? '🚗 Ajouter une voiture' : type === 'accessoire' ? '🔧 Ajouter un accessoire' : '➕ Ajouter un article';
       document.getElementById('pack-field').style.display = type === 'voiture' ? 'block' : 'none';
       document.getElementById('flocage-field').style.display = (type === 'voiture' || type === 'accessoire') ? 'block' : 'none';
+      document.getElementById('dealers-field').style.display = type === 'voiture' ? 'block' : 'none';
       document.getElementById('item-nom').value = '';
       document.getElementById('item-categorie').value = '';
       document.getElementById('item-prix').value = '';
@@ -226,6 +334,22 @@
       document.getElementById('item-image').value = '';
       document.getElementById('item-pack').value = '';
       document.getElementById('item-flocage').value = '';
+      
+      // Checkboxes concessions
+      if (type === 'voiture') {
+        const cbContainer = document.getElementById('dealers-checkboxes');
+        if (!dealers.length) {
+          cbContainer.innerHTML = '<em style="color:#4a5568">Aucun concessionnaire. Créez-en d\'abord dans l\'onglet 🏢 Concessions.</em>';
+        } else {
+          cbContainer.innerHTML = dealers.map(d => `
+            <label class="checkbox-item">
+              <input type="checkbox" value="${d.id}" class="dealer-cb">
+              <span>🏢 <strong>${d.nom}</strong>${d.adresse ? ` <small style="color:#4a5568">(${d.adresse})</small>` : ''}</span>
+            </label>
+          `).join('');
+        }
+      }
+      
       document.getElementById('add-modal').style.display = 'flex';
     }
     function closeModal() { document.getElementById('add-modal').style.display = 'none'; }
@@ -234,6 +358,12 @@
       const nom = document.getElementById('item-nom').value;
       const categorie = document.getElementById('item-categorie').value;
       if (!nom || !categorie) return alert('Nom et catégorie requis');
+      
+      let dealersSelected = [];
+      if (currentType === 'voiture') {
+        dealersSelected = [...document.querySelectorAll('.dealer-cb:checked')].map(cb => cb.value);
+      }
+      
       const body = {
         guild: guildId,
         nom, categorie,
@@ -242,14 +372,15 @@
         description: document.getElementById('item-desc').value,
         image: document.getElementById('item-image').value,
         pack: currentType === 'voiture' ? document.getElementById('item-pack').value : '',
-        flocageImage: (currentType === 'voiture' || currentType === 'accessoire') ? document.getElementById('item-flocage').value : ''
+        flocageImage: (currentType === 'voiture' || currentType === 'accessoire') ? document.getElementById('item-flocage').value : '',
+        dealers: dealersSelected
       };
       await fetch('/api/shop', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body)
       });
       closeModal();
-      if (currentType === 'voiture') loadCars();
+      if (currentType === 'voiture') { loadCars(); loadDealers(); }
       else if (currentType === 'accessoire') loadAccessories();
       else loadShop();
     }
@@ -257,22 +388,18 @@
     async function deleteItem(id) {
       if (!confirm('Supprimer ?')) return;
       await fetch(`/api/shop/${id}?guild=${guildId}`, { method: 'DELETE' });
-      loadShop(); loadCars(); loadAccessories();
+      loadShop(); loadCars(); loadAccessories(); loadDealers();
     }
     
-    function editItem(id) {
+    async function editItem(id) {
       const item = items.find(i => i.id === id) || cars.find(i => i.id === id) || accessories.find(i => i.id === id);
       if (!item) return;
       const prix = prompt('Prix :', item.prix || '');
       const desc = prompt('Description :', item.description || '');
       const cat = prompt('Catégorie :', item.categorie || '');
       let pack = null, flocage = null;
-      if (item.type === 'voiture') {
-        pack = prompt('Pack (séparés par virgule) :', (item.pack || []).join(', '));
-      }
-      if (item.type === 'voiture' || item.type === 'accessoire') {
-        flocage = prompt('URL flocage :', item.flocageImage || '');
-      }
+      if (item.type === 'voiture') pack = prompt('Pack (séparés par virgule) :', (item.pack || []).join(', '));
+      if (item.type === 'voiture' || item.type === 'accessoire') flocage = prompt('URL flocage :', item.flocageImage || '');
       const upd = {};
       if (prix !== null && prix !== '') upd.prix = parseInt(prix) || null;
       if (desc !== null) upd.description = desc;
@@ -280,11 +407,13 @@
       if (pack !== null) upd.pack = pack;
       if (flocage !== null) upd.flocageImage = flocage;
       if (Object.keys(upd).length) {
-        fetch(`/api/shop/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ guild: guildId, ...upd }) }).then(() => { loadShop(); loadCars(); loadAccessories(); });
+        await fetch(`/api/shop/${id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ guild: guildId, ...upd }) });
+        loadShop(); loadCars(); loadAccessories(); loadDealers();
       }
     }
     
     loadOrders();
+    loadDealers();
     loadShop();
     loadCars();
     loadAccessories();
