@@ -23,7 +23,6 @@
     .search-box input::placeholder{color:#4a5568}
     .search-box button{padding:14px 25px;background:#5352ed;border:none;border-radius:8px;color:#fff;font-weight:bold;cursor:pointer;font-size:15px}
     .search-box select{padding:14px 18px;background:#1a1f2a;border:1px solid #1e2535;border-radius:8px;color:#fff;font-size:15px;outline:none;min-width:200px}
-    .card{background:#141a24;border:1px solid #1e2535;border-radius:12px;padding:25px;margin-bottom:20px}
     .catalogue-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:20px}
     .product-card{background:#1a1f2a;border:1px solid #1e2535;border-radius:10px;overflow:hidden;transition:transform 0.2s,box-shadow 0.2s}
     .product-card:hover{transform:translateY(-3px);box-shadow:0 10px 30px rgba(0,0,0,0.3);border-color:#5352ed}
@@ -37,11 +36,14 @@
     .product-price small{font-size:13px;color:#4a5568;font-weight:normal}
     .pack-list{margin-bottom:15px}
     .pack-item{display:inline-block;background:#5352ed22;color:#a29bfe;padding:4px 10px;border-radius:20px;font-size:11px;margin:2px}
+    .dealer-list{margin-bottom:15px}
+    .dealer-item{display:inline-block;background:#ffd32a22;color:#ffd32a;padding:4px 10px;border-radius:20px;font-size:11px;margin:2px}
     .flocage-thumb{width:100%;height:60px;object-fit:cover;border-radius:6px;margin-bottom:10px;border:1px solid #1e2535}
     .product-actions{display:flex;gap:10px}
     .product-actions input{width:70px;padding:10px;background:#0b0f14;border:1px solid #1e2535;border-radius:6px;color:#fff;text-align:center}
     .product-actions button{flex:1;padding:10px;background:#5352ed;border:none;border-radius:6px;color:#fff;font-weight:bold;cursor:pointer;font-size:13px}
     .product-actions button:hover{opacity:0.9}
+    .product-actions button:disabled{opacity:0.4;cursor:not-allowed}
     .order-card{background:#1a1f2a;border:1px solid #1e2535;border-radius:10px;padding:20px;margin-bottom:15px}
     .order-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;flex-wrap:wrap;gap:10px}
     .order-id{font-family:monospace;font-size:14px;color:#a29bfe}
@@ -73,6 +75,12 @@
     .info-box{background:#5352ed22;border:1px solid #5352ed44;border-radius:8px;padding:15px;margin-bottom:25px;font-size:14px}
     .info-box strong{color:#a29bfe}
     .footer{text-align:center;margin-top:30px;color:#4a5568;font-size:13px}
+    .dealer-card{background:#1a1f2a;border:2px solid #1e2535;border-radius:10px;padding:15px;cursor:pointer;transition:all 0.2s}
+    .dealer-card:hover{border-color:#5352ed}
+    .dealer-card.selected{border-color:#2ed573;background:#2ed57315}
+    .dealer-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-bottom:20px}
+    .dealer-name{font-weight:700;font-size:14px;margin-bottom:5px}
+    .dealer-address{font-size:12px;color:#8a9aa8}
   </style>
 </head>
 <body>
@@ -91,22 +99,21 @@
     <div class="tabs">
       <button class="tab active" onclick="showTab('catalogue', event)">🛍️ Catalogue</button>
       <button class="tab" onclick="showTab('voitures', event)">🚗 Voitures</button>
+      <button class="tab" onclick="showTab('concessions', event)">🏢 Concessions</button>
       <button class="tab" onclick="showTab('suivi', event)">📋 Mes commandes</button>
     </div>
     
-    <!-- Catalogue général -->
+    <!-- Catalogue -->
     <div id="tab-catalogue">
       <div class="search-box">
         <input type="text" id="search-catalogue" placeholder="🔍 Rechercher un article...">
-        <select id="filter-category">
-          <option value="">Toutes les catégories</option>
-        </select>
+        <select id="filter-category"><option value="">Toutes les catégories</option></select>
         <button onclick="loadCatalogue()">🔄 Actualiser</button>
       </div>
       <div class="info-box">
         <strong>🛒 Comment commander ?</strong><br>
         1. Choisissez vos articles et quantités<br>
-        2. Entrez votre ID Discord (trouvable dans Paramètres → Avancé → Mode Développeur)<br>
+        2. Entrez votre ID Discord<br>
         3. Cliquez sur "Passer la commande"
       </div>
       <div id="catalogue-container"></div>
@@ -120,12 +127,15 @@
       </div>
       <div class="search-box">
         <input type="text" id="search-car" placeholder="🔍 Rechercher...">
-        <select id="filter-car-cat">
-          <option value="">Toutes les catégories</option>
-        </select>
+        <select id="filter-car-cat"><option value="">Toutes les catégories</option></select>
         <button onclick="loadCars()">🔄 Actualiser</button>
       </div>
       <div id="cars-container"></div>
+    </div>
+    
+    <!-- Concessions -->
+    <div id="tab-concessions" style="display:none">
+      <div id="dealers-container"></div>
     </div>
     
     <!-- Suivi -->
@@ -143,30 +153,41 @@
     </div>
   </div>
   
-  <!-- Modal commande -->
+  <!-- Modal commande (2 étapes : dealer si voiture, puis récap) -->
   <div id="order-modal" class="modal" style="display:none">
     <div class="modal-content">
       <div class="modal-header">
-        <div class="modal-title">🛒 Passer commande</div>
+        <div class="modal-title" id="modal-title-text">🛒 Passer commande</div>
         <button class="modal-close" onclick="closeModal()">&times;</button>
       </div>
-      <div id="modal-items-summary" style="margin-bottom:20px"></div>
-      <div class="form-group">
-        <label>📱 Votre ID Discord *</label>
-        <input type="text" id="order-discord-id" placeholder="123456789012345678">
-        <small style="color:#4a5568;display:block;margin-top:5px">Paramètres Discord → Avancé → Mode Développeur</small>
+      
+      <!-- Étape concession (uniquement si voiture) -->
+      <div id="step-dealer" style="display:none">
+        <p style="color:#a29bfe;margin-bottom:15px;font-size:14px">🏢 Choisissez le concessionnaire où vous souhaitez récupérer votre voiture :</p>
+        <div class="dealer-grid" id="dealer-selection"></div>
       </div>
-      <div class="form-group">
-        <label>📝 Précisions / Détails supplémentaires (optionnel)</label>
-        <textarea id="order-details" placeholder="Ex: Couleur préférée, modèle souhaité..."></textarea>
+      
+      <!-- Étape récap -->
+      <div id="step-summary">
+        <div id="modal-items-summary" style="margin-bottom:20px"></div>
+        <div class="form-group">
+          <label>📱 Votre ID Discord *</label>
+          <input type="text" id="order-discord-id" placeholder="123456789012345678">
+        </div>
+        <div class="form-group">
+          <label>📝 Précisions / Détails supplémentaires (optionnel)</label>
+          <textarea id="order-details" placeholder="Ex: Couleur préférée..."></textarea>
+        </div>
+        <div class="form-group">
+          <label>🖼️ URL image flocage (optionnel)</label>
+          <input type="text" id="order-flocage" placeholder="https://exemple.com/flocage.png">
+        </div>
       </div>
-      <div class="form-group">
-        <label>🖼️ URL image flocage (optionnel — voitures/accessoires)</label>
-        <input type="text" id="order-flocage" placeholder="https://exemple.com/flocage.png">
-      </div>
+      
       <div class="modal-actions">
         <button onclick="closeModal()" style="padding:12px 20px;background:#1a1f2a;border:1px solid #1e2535;border-radius:8px;color:#fff;cursor:pointer">Annuler</button>
-        <button onclick="submitOrder()" style="padding:12px 25px;background:#2ed573;border:none;border-radius:8px;color:#000;font-weight:bold;cursor:pointer">✅ Confirmer la commande</button>
+        <button id="btn-next" onclick="goToDealerStep()" style="padding:12px 25px;background:#5352ed;border:none;border-radius:8px;color:#fff;font-weight:bold;cursor:pointer;display:none">Suivant ➡️</button>
+        <button id="btn-submit" onclick="submitOrder()" style="padding:12px 25px;background:#2ed573;border:none;border-radius:8px;color:#000;font-weight:bold;cursor:pointer">✅ Confirmer</button>
       </div>
     </div>
   </div>
@@ -177,8 +198,10 @@
     let catalogueItems = [];
     let carItems = [];
     let accessoriesItems = [];
+    let dealers = [];
     let currentCarSub = 'cars';
     let currentDiscordId = localStorage.getItem('rp_discord_id') || '';
+    let selectedDealerId = null;
     
     if (currentDiscordId) {
       document.getElementById('user-info').style.display = 'block';
@@ -186,11 +209,10 @@
     }
     
     async function init() {
+      await loadDealers();
       await loadCatalogue();
       await loadCars();
-      if (currentDiscordId) {
-        document.getElementById('discord-id-search').value = currentDiscordId;
-      }
+      if (currentDiscordId) document.getElementById('discord-id-search').value = currentDiscordId;
     }
     
     function logout() {
@@ -204,7 +226,7 @@
     function showTab(tab, ev) {
       document.querySelectorAll('.tabs .tab').forEach(t => t.classList.remove('active'));
       if (ev) ev.target.classList.add('active');
-      ['catalogue','voitures','suivi'].forEach(t => {
+      ['catalogue','voitures','concessions','suivi'].forEach(t => {
         document.getElementById('tab-' + t).style.display = t === tab ? 'block' : 'none';
       });
       if (tab === 'suivi' && currentDiscordId) searchOrders();
@@ -217,7 +239,32 @@
       renderCars();
     }
     
-    // ─── CATALOGUE ─────────────────────────────────────────────────────────────
+    // ─── DEALERS ───
+    async function loadDealers() {
+      const res = await fetch(`/api/public/dealers/${guildId}`);
+      dealers = await res.json();
+      renderDealersList();
+    }
+    
+    function renderDealersList() {
+      const container = document.getElementById('dealers-container');
+      if (!dealers.length) {
+        container.innerHTML = '<div class="empty"><div class="empty-icon">🏢</div>Aucun concessionnaire disponible</div>';
+        return;
+      }
+      container.innerHTML = `<div class="catalogue-grid">` + dealers.map(d => `
+        <div class="product-card">
+          <div class="product-image">${d.image ? `<img src="${d.image}" alt="${d.nom}">` : '🏢'}</div>
+          <div class="product-info">
+            <div class="product-name">${d.nom}</div>
+            ${d.adresse ? `<div class="product-desc">📍 ${d.adresse}</div>` : ''}
+            <div style="margin-top:10px"><span class="product-category">ID: ${d.id}</span></div>
+          </div>
+        </div>
+      `).join('') + `</div>`;
+    }
+    
+    // ─── CATALOGUE ───
     async function loadCatalogue() {
       const container = document.getElementById('catalogue-container');
       container.innerHTML = '<div class="empty"><div class="empty-icon">⏳</div>Chargement...</div>';
@@ -231,7 +278,7 @@
         [...cats].sort().forEach(c => { filterSelect.innerHTML += `<option value="${c}">${c}</option>`; });
         renderCatalogue(catalogueItems);
       } catch (e) {
-        container.innerHTML = '<div class="empty"><div class="empty-icon">❌</div>Erreur de chargement</div>';
+        container.innerHTML = '<div class="empty"><div class="empty-icon">❌</div>Erreur</div>';
       }
     }
     
@@ -260,7 +307,7 @@
       `).join('') + `</div>`;
     }
     
-    // ─── VOITURES ──────────────────────────────────────────────────────────────
+    // ─── VOITURES ───
     async function loadCars() {
       const container = document.getElementById('cars-container');
       container.innerHTML = '<div class="empty"><div class="empty-icon">⏳</div>Chargement...</div>';
@@ -269,16 +316,14 @@
         carItems = await resCars.json();
         const resAcc = await fetch(`/api/public/shop/${guildId}?type=accessoire`);
         accessoriesItems = await resAcc.json();
-        
         const cats = new Set();
         [...carItems, ...accessoriesItems].forEach(i => { if (i.categorie) cats.add(i.categorie); });
         const filterSelect = document.getElementById('filter-car-cat');
         filterSelect.innerHTML = '<option value="">Toutes les catégories</option>';
         [...cats].sort().forEach(c => { filterSelect.innerHTML += `<option value="${c}">${c}</option>`; });
-        
         renderCars();
       } catch (e) {
-        container.innerHTML = '<div class="empty"><div class="empty-icon">❌</div>Erreur de chargement</div>';
+        container.innerHTML = '<div class="empty"><div class="empty-icon">❌</div>Erreur</div>';
       }
     }
     
@@ -294,23 +339,32 @@
         container.innerHTML = `<div class="empty"><div class="empty-icon">${currentCarSub === 'cars' ? '🚗' : '🔧'}</div>Aucun élément trouvé</div>`;
         return;
       }
-      container.innerHTML = `<div class="catalogue-grid">` + filtered.map(item => `
+      container.innerHTML = `<div class="catalogue-grid">` + filtered.map(item => {
+        const carDealers = (item.dealers || []).map(did => {
+          const d = dealers.find(x => x.id === did);
+          return d ? `<span class="dealer-item">🏢 ${d.nom}</span>` : '';
+        }).join('');
+        const isCar = item.type === 'voiture';
+        const hasDealers = !isCar || (item.dealers && item.dealers.length > 0);
+        return `
         <div class="product-card">
-          <div class="product-image">${item.image ? `<img src="${item.image}" alt="${item.nom}">` : (currentCarSub === 'cars' ? '🚗' : '🔧')}</div>
+          <div class="product-image">${item.image ? `<img src="${item.image}" alt="${item.nom}">` : (isCar ? '🚗' : '🔧')}</div>
           <div class="product-info">
             <div class="product-name">${item.nom}</div>
             <span class="product-category">${item.categorie || 'Autre'}</span>
             <div class="product-desc">${item.description || 'Aucune description'}</div>
             ${item.pack?.length ? `<div class="pack-list">📦 Pack: ${item.pack.map(p => `<span class="pack-item">${p}</span>`).join('')}</div>` : ''}
+            ${isCar && carDealers ? `<div class="dealer-list">${carDealers}</div>` : ''}
             ${item.flocageImage ? `<img src="${item.flocageImage}" class="flocage-thumb" alt="Flocage">` : ''}
             ${item.prix ? `<div class="product-price">${item.prix} <small>💰</small></div>` : ''}
+            ${!hasDealers ? `<div style="color:#ff4757;font-size:12px;margin-bottom:10px">⚠️ Indisponible — aucune concession</div>` : ''}
             <div class="product-actions">
-              <input type="number" id="qty-${item.id}" value="1" min="1" max="99">
-              <button onclick="addToCart('${item.id}', '${item.nom}', '${item.type}')">🛒 Ajouter</button>
+              <input type="number" id="qty-${item.id}" value="1" min="1" max="99" ${!hasDealers ? 'disabled' : ''}>
+              <button ${!hasDealers ? 'disabled' : ''} onclick="addToCart('${item.id}', '${item.nom}', '${item.type}')">🛒 Ajouter</button>
             </div>
           </div>
-        </div>
-      `).join('') + `</div>`;
+        </div>`;
+      }).join('') + `</div>`;
     }
     
     function addToCart(id, nom, type) {
@@ -323,11 +377,16 @@
         const item = allItems.find(i => i.id === id);
         cart.push({ id, nom, quantite, type, item });
       }
-      showToast(`✅ ${quantite}x ${nom} ajouté au panier`, 'success');
+      showToast(`✅ ${quantite}x ${nom} ajouté`, 'success');
     }
     
     function openOrderModal() {
-      if (cart.length === 0) { showToast('🛒 Votre panier est vide', 'error'); return; }
+      if (cart.length === 0) { showToast('🛒 Panier vide', 'error'); return; }
+      selectedDealerId = null;
+      
+      // Vérifier si le panier contient une voiture → étape concession obligatoire
+      const hasCar = cart.some(c => c.type === 'voiture');
+      
       const summary = document.getElementById('modal-items-summary');
       summary.innerHTML = `
         <div style="background:#1a1f2a;padding:15px;border-radius:8px">
@@ -336,17 +395,87 @@
             ${cart.map(c => `<li style="padding:5px 0">• ${c.quantite}x ${c.nom}${c.item?.pack?.length ? ` <span style="color:#a29bfe;font-size:11px">(📦 ${c.item.pack.join(', ')})</span>` : ''}</li>`).join('')}
           </ul>
         </div>`;
+      
       if (currentDiscordId) document.getElementById('order-discord-id').value = currentDiscordId;
+      
+      if (hasCar) {
+        // Afficher étape concession
+        document.getElementById('step-dealer').style.display = 'block';
+        document.getElementById('step-summary').style.display = 'none';
+        document.getElementById('btn-next').style.display = 'inline-block';
+        document.getElementById('btn-submit').style.display = 'none';
+        document.getElementById('modal-title-text').textContent = '🏢 Choisir une concession';
+        renderDealerSelection();
+      } else {
+        document.getElementById('step-dealer').style.display = 'none';
+        document.getElementById('step-summary').style.display = 'block';
+        document.getElementById('btn-next').style.display = 'none';
+        document.getElementById('btn-submit').style.display = 'inline-block';
+        document.getElementById('modal-title-text').textContent = '🛒 Passer commande';
+      }
+      
       document.getElementById('order-modal').style.display = 'flex';
     }
     
-    function closeModal() { document.getElementById('order-modal').style.display = 'none'; }
+    function renderDealerSelection() {
+      const container = document.getElementById('dealer-selection');
+      if (!dealers.length) {
+        container.innerHTML = '<div style="color:#ff4757;text-align:center">⚠️ Aucun concessionnaire disponible. Impossible de commander une voiture.</div>';
+        return;
+      }
+      container.innerHTML = dealers.map(d => `
+        <div class="dealer-card" data-id="${d.id}" onclick="selectDealer('${d.id}')">
+          <div class="dealer-name">🏢 ${d.nom}</div>
+          ${d.adresse ? `<div class="dealer-address">📍 ${d.adresse}</div>` : ''}
+        </div>
+      `).join('');
+    }
+    
+    function selectDealer(id) {
+      selectedDealerId = id;
+      document.querySelectorAll('.dealer-card').forEach(c => {
+        c.classList.toggle('selected', c.dataset.id === id);
+      });
+      document.getElementById('btn-next').disabled = false;
+    }
+    
+    function goToDealerStep() {
+      if (!selectedDealerId) { showToast('❌ Choisissez un concessionnaire', 'error'); return; }
+      const dealer = dealers.find(d => d.id === selectedDealerId);
+      const summary = document.getElementById('modal-items-summary');
+      summary.innerHTML = `
+        <div style="background:#1a1f2a;padding:15px;border-radius:8px">
+          <strong style="color:#a29bfe">📦 Articles :</strong>
+          <ul style="margin-top:10px;list-style:none">
+            ${cart.map(c => `<li style="padding:5px 0">• ${c.quantite}x ${c.nom}</li>`).join('')}
+          </ul>
+          <div style="margin-top:10px;padding-top:10px;border-top:1px solid #1e2535">
+            <strong style="color:#ffd32a">🏢 Concession :</strong> ${dealer?.nom || ''}
+            ${dealer?.adresse ? `<br><small style="color:#8a9aa8">📍 ${dealer.adresse}</small>` : ''}
+          </div>
+        </div>`;
+      document.getElementById('step-dealer').style.display = 'none';
+      document.getElementById('step-summary').style.display = 'block';
+      document.getElementById('btn-next').style.display = 'none';
+      document.getElementById('btn-submit').style.display = 'inline-block';
+      document.getElementById('modal-title-text').textContent = '🛒 Passer commande';
+    }
+    
+    function closeModal() {
+      document.getElementById('order-modal').style.display = 'none';
+      selectedDealerId = null;
+    }
     
     async function submitOrder() {
       const discordId = document.getElementById('order-discord-id').value.trim();
       const details = document.getElementById('order-details').value.trim();
       const flocage = document.getElementById('order-flocage').value.trim();
-      if (!discordId) { showToast('❌ Votre ID Discord est requis', 'error'); return; }
+      
+      // Vérifier si voiture dans le panier → dealer obligatoire
+      const hasCar = cart.some(c => c.type === 'voiture');
+      if (hasCar && !selectedDealerId) { showToast('❌ Choisissez un concessionnaire', 'error'); return; }
+      
+      if (!discordId) { showToast('❌ ID Discord requis', 'error'); return; }
       if (!/^\d{17,19}$/.test(discordId)) { showToast('❌ ID Discord invalide', 'error'); return; }
       if (cart.length === 0) { showToast('❌ Panier vide', 'error'); return; }
       
@@ -360,7 +489,8 @@
         userId: discordId,
         items: cart.map(c => ({ itemId: c.id, nom: c.nom, quantite: c.quantite, type: c.type, pack: c.item?.pack || [] })),
         details: details || null,
-        flocage: flocage || null
+        flocage: flocage || null,
+        dealerId: selectedDealerId || null
       };
       
       try {
@@ -376,7 +506,7 @@
       } catch (e) { showToast('❌ ' + e.message, 'error'); }
     }
     
-    // ─── SUIVI ─────────────────────────────────────────────────────────────────
+    // ─── SUIVI ───
     async function searchOrders() {
       const discordId = document.getElementById('discord-id-search').value.trim();
       const container = document.getElementById('orders-container');
@@ -390,7 +520,7 @@
       try {
         const res = await fetch(`/api/public/orders/${discordId}?guild=${guildId}`);
         const orders = await res.json();
-        if (!orders || orders.length === 0) { container.innerHTML = '<div class="empty"><div class="empty-icon">📭</div>Aucune commande trouvée</div>'; return; }
+        if (!orders || orders.length === 0) { container.innerHTML = '<div class="empty"><div class="empty-icon">📭</div>Aucune commande</div>'; return; }
         const statusLabels = { 'en_attente': '🟡 En attente', 'validee': '🟢 Validée', 'livree': '✅ Livrée', 'refusee': '🔴 Refusée' };
         let html = '';
         orders.forEach(order => {
@@ -406,10 +536,11 @@
                 <div class="order-items">${items}</div>
                 <span class="status ${order.status}">${statusLabels[order.status] || order.status}</span>
               </div>
+              ${order.dealerNom ? `<div class="order-details" style="color:#ffd32a">🏢 ${order.dealerNom}</div>` : ''}
               ${order.details ? `<div class="order-details">📝 ${order.details}</div>` : ''}
-              ${order.flocage ? `<div class="order-details">🖼️ Flocage: <a href="${order.flocage}" target="_blank" style="color:#a29bfe">${order.flocage}</a></div>` : ''}
+              ${order.flocage ? `<div class="order-details">🖼️ Flocage : <a href="${order.flocage}" target="_blank" style="color:#a29bfe">${order.flocage}</a></div>` : ''}
               ${order.status === 'refusee' && order.raisonRefus ? `<div class="order-details" style="color:#ff4757">❌ ${order.raisonRefus}</div>` : ''}
-              ${order.status === 'validee' ? `<div class="order-details" style="color:#2ed573">✅ Validée — En cours de préparation</div>` : ''}
+              ${order.status === 'validee' ? `<div class="order-details" style="color:#2ed573">✅ Validée — Préparation en cours</div>` : ''}
               ${order.status === 'livree' ? `<div class="order-details" style="color:#a29bfe">🚚 Livrée — Bon jeu !</div>` : ''}
             </div>`;
         });
