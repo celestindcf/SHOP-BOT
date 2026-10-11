@@ -30,11 +30,13 @@
     input,select,textarea{width:100%;padding:12px;background:#1a1f2a;border:1px solid #1e2535;border-radius:6px;color:#fff;margin-bottom:15px}
     .pack-tag{display:inline-block;background:#5352ed33;color:#a29bfe;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px}
     .dealer-tag{display:inline-block;background:#ffd32a22;color:#ffd32a;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px}
+    .webhook-tag{display:inline-block;background:#2ed57322;color:#2ed573;padding:2px 8px;border-radius:4px;font-size:11px;margin:2px}
     .flocage-preview{max-width:60px;max-height:60px;border-radius:4px;object-fit:cover}
     .checkbox-list{max-height:200px;overflow-y:auto;border:1px solid #1e2535;border-radius:6px;padding:10px;background:#0b0f14;margin-bottom:15px}
     .checkbox-item{display:flex;align-items:center;gap:10px;padding:8px;border-radius:4px;cursor:pointer}
     .checkbox-item:hover{background:#1a1f2a}
     .checkbox-item input{width:auto;margin:0}
+    .help-text{color:#4a5568;font-size:11px;margin-top:-10px;margin-bottom:15px;display:block}
   </style>
 </head>
 <body>
@@ -115,7 +117,7 @@
         </div>
         <div class="card">
           <table id="dealers-table">
-            <thead><tr><th>Image</th><th>Nom</th><th>Adresse</th><th>Voitures dispo</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Image</th><th>Nom</th><th>Adresse</th><th>Webhook</th><th>Voitures dispo</th><th>Actions</th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
@@ -152,11 +154,14 @@
   
   <!-- Modal Concession -->
   <div id="dealer-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.8);align-items:center;justify-content:center;z-index:1000;padding:20px">
-    <div style="background:#141a24;padding:25px;border-radius:8px;max-width:500px;width:100%">
+    <div style="background:#141a24;padding:25px;border-radius:8px;max-width:550px;width:100%;max-height:90vh;overflow-y:auto">
       <h3 style="margin-bottom:20px;color:#a29bfe" id="dealer-modal-title">🏢 Nouveau concessionnaire</h3>
       <input type="text" id="dealer-nom" placeholder="Nom *">
       <input type="text" id="dealer-adresse" placeholder="Adresse / Localisation">
       <input type="text" id="dealer-image" placeholder="URL Image (optionnel)">
+      <label style="display:block;color:#a29bfe;font-size:13px;margin-bottom:8px">🔔 Webhook Discord (reçoit les bons de commande)</label>
+      <input type="text" id="dealer-webhook" placeholder="https://discord.com/api/webhooks/...">
+      <small class="help-text">Paramètres du salon → Intégrations → Webhooks → Nouveau webhook → Copier l'URL</small>
       <div style="display:flex;gap:10px;margin-top:20px">
         <button class="btn-primary" onclick="saveDealer()">Enregistrer</button>
         <button onclick="closeDealerModal()" style="background:#1a1f2a;color:#fff">Annuler</button>
@@ -214,6 +219,7 @@
           <td>${d.image ? `<img src="${d.image}" style="width:50px;height:40px;object-fit:cover;border-radius:4px">` : '🏢'}</td>
           <td><strong>${d.nom}</strong><br><code>${d.id}</code></td>
           <td>${d.adresse || '-'}</td>
+          <td>${d.webhook ? `<span class="webhook-tag">🔔 Configuré</span>` : '<em style="color:#4a5568">Aucun</em>'}</td>
           <td>${carsInDealer.length ? carsInDealer.map(c => `<span class="dealer-tag">${c.nom}</span>`).join('') : '<em style="color:#4a5568">Aucune</em>'}</td>
           <td><button class="btn-warning" onclick="editDealer('${d.id}')">✏️</button><button class="btn-danger" onclick="deleteDealer('${d.id}')">🗑️</button></td>
         </tr>`;
@@ -226,6 +232,7 @@
       document.getElementById('dealer-nom').value = '';
       document.getElementById('dealer-adresse').value = '';
       document.getElementById('dealer-image').value = '';
+      document.getElementById('dealer-webhook').value = '';
       document.getElementById('dealer-modal').style.display = 'flex';
     }
     function closeDealerModal() { document.getElementById('dealer-modal').style.display = 'none'; editingDealerId = null; }
@@ -238,6 +245,7 @@
       document.getElementById('dealer-nom').value = d.nom || '';
       document.getElementById('dealer-adresse').value = d.adresse || '';
       document.getElementById('dealer-image').value = d.image || '';
+      document.getElementById('dealer-webhook').value = d.webhook || '';
       document.getElementById('dealer-modal').style.display = 'flex';
     }
     
@@ -248,7 +256,8 @@
         guild: guildId,
         nom,
         adresse: document.getElementById('dealer-adresse').value,
-        image: document.getElementById('dealer-image').value
+        image: document.getElementById('dealer-image').value,
+        webhook: document.getElementById('dealer-webhook').value
       };
       if (editingDealerId) {
         await fetch(`/api/dealers/${editingDealerId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -335,7 +344,6 @@
       document.getElementById('item-pack').value = '';
       document.getElementById('item-flocage').value = '';
       
-      // Checkboxes concessions
       if (type === 'voiture') {
         const cbContainer = document.getElementById('dealers-checkboxes');
         if (!dealers.length) {
