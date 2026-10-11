@@ -14,7 +14,6 @@ const PORT = process.env.PORT || 3000;
 const MONGO_URL = process.env.MONGO_URL;
 const ORDER_WEBHOOK = process.env.ORDER_WEBHOOK || '';
 
-// ─── ID du serveur Discord ────────────────────────────────────────────────────
 const GUILD_ID = '1495077016515514408'; // ← REMPLACE PAR TON ID SERVEUR
 
 // ─── MongoDB ──────────────────────────────────────────────────────────────────
@@ -50,23 +49,29 @@ async function sendWebhook(embed) {
   } catch (e) {}
 }
 
+function slugify(str) {
+  return str.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+}
+
 // ─── Slash Commands ───────────────────────────────────────────────────────────
 const commands = [
-  new SlashCommandBuilder().setName('catalogue').setDescription('Voir le catalogue').addStringOption(o => o.setName('categorie').setDescription('Filtrer').setRequired(false)),
-  new SlashCommandBuilder().setName('commander').setDescription('Passer une commande').addStringOption(o => o.setName('article').setDescription('Nom ou ID').setRequired(true)).addIntegerOption(o => o.setName('quantite').setDescription('Quantité').setRequired(false)).addStringOption(o => o.setName('details').setDescription('Précisions').setRequired(false)),
+  new SlashCommandBuilder().setName('catalogue').setDescription('Voir le catalogue').addStringOption(o => o.setName('categorie').setDescription('Filtrer').setRequired(false)).addStringOption(o => o.setName('type').setDescription('Type').setRequired(false).addChoices({ name: 'Articles', value: 'item' }, { name: 'Voitures', value: 'voiture' }, { name: 'Accessoires', value: 'accessoire' })),
+  new SlashCommandBuilder().setName('commander').setDescription('Passer une commande').addStringOption(o => o.setName('article').setDescription('Nom ou ID').setRequired(true)).addIntegerOption(o => o.setName('quantite').setDescription('Quantité').setRequired(false)).addStringOption(o => o.setName('details').setDescription('Précisions').setRequired(false)).addStringOption(o => o.setName('flocage').setDescription('URL image flocage (voitures)').setRequired(false)),
   new SlashCommandBuilder().setName('mescommandes').setDescription('Voir vos commandes'),
   new SlashCommandBuilder().setName('validercommande').setDescription('[VENDEUR] Valider').addStringOption(o => o.setName('id').setDescription('ID commande').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
   new SlashCommandBuilder().setName('refusercommande').setDescription('[VENDEUR] Refuser').addStringOption(o => o.setName('id').setDescription('ID commande').setRequired(true)).addStringOption(o => o.setName('raison').setDescription('Raison').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
   new SlashCommandBuilder().setName('livrercommande').setDescription('[VENDEUR] Livrer').addStringOption(o => o.setName('id').setDescription('ID commande').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
   new SlashCommandBuilder().setName('panelvendeur').setDescription('[VENDEUR] Lien panel'),
-  new SlashCommandBuilder().setName('addarticle').setDescription('[ADMIN] Ajouter article').addStringOption(o => o.setName('nom').setDescription('Nom').setRequired(true)).addStringOption(o => o.setName('categorie').setDescription('Catégorie').setRequired(true)).addIntegerOption(o => o.setName('prix').setDescription('Prix').setRequired(false)).addStringOption(o => o.setName('description').setDescription('Description').setRequired(false)).addStringOption(o => o.setName('image').setDescription('URL image').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-  new SlashCommandBuilder().setName('removearticle').setDescription('[ADMIN] Supprimer').addStringOption(o => o.setName('id').setDescription('ID article').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
-  new SlashCommandBuilder().setName('editarticle').setDescription('[ADMIN] Modifier').addStringOption(o => o.setName('id').setDescription('ID article').setRequired(true)).addIntegerOption(o => o.setName('prix').setDescription('Prix').setRequired(false)).addStringOption(o => o.setName('description').setDescription('Description').setRequired(false)).addStringOption(o => o.setName('categorie').setDescription('Catégorie').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('addarticle').setDescription('[ADMIN] Ajouter un article').addStringOption(o => o.setName('nom').setDescription('Nom').setRequired(true)).addStringOption(o => o.setName('categorie').setDescription('Catégorie').setRequired(true)).addIntegerOption(o => o.setName('prix').setDescription('Prix').setRequired(false)).addStringOption(o => o.setName('description').setDescription('Description').setRequired(false)).addStringOption(o => o.setName('image').setDescription('URL image').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('addvoiture').setDescription('[ADMIN] Ajouter une voiture').addStringOption(o => o.setName('nom').setDescription('Nom').setRequired(true)).addStringOption(o => o.setName('categorie').setDescription('Catégorie (Sport, SUV...)').setRequired(true)).addIntegerOption(o => o.setName('prix').setDescription('Prix').setRequired(false)).addStringOption(o => o.setName('description').setDescription('Description').setRequired(false)).addStringOption(o => o.setName('image').setDescription('URL image voiture').setRequired(false)).addStringOption(o => o.setName('pack').setDescription('Pack inclus (séparés par virgule)').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('addaccessoire').setDescription('[ADMIN] Ajouter un accessoire voiture').addStringOption(o => o.setName('nom').setDescription('Nom').setRequired(true)).addStringOption(o => o.setName('categorie').setDescription('Catégorie (Flocage, Jantes...)').setRequired(true)).addIntegerOption(o => o.setName('prix').setDescription('Prix').setRequired(false)).addStringOption(o => o.setName('description').setDescription('Description').setRequired(false)).addStringOption(o => o.setName('image').setDescription('URL image accessoire').setRequired(false)).addStringOption(o => o.setName('flocage').setDescription('URL image flocage').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('removearticle').setDescription('[ADMIN] Supprimer un article').addStringOption(o => o.setName('id').setDescription('ID article').setRequired(true)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+  new SlashCommandBuilder().setName('editarticle').setDescription('[ADMIN] Modifier un article').addStringOption(o => o.setName('id').setDescription('ID article').setRequired(true)).addIntegerOption(o => o.setName('prix').setDescription('Prix').setRequired(false)).addStringOption(o => o.setName('description').setDescription('Description').setRequired(false)).addStringOption(o => o.setName('categorie').setDescription('Catégorie').setRequired(false)).addStringOption(o => o.setName('pack').setDescription('Pack (séparés par virgule)').setRequired(false)).addStringOption(o => o.setName('flocage').setDescription('URL flocage').setRequired(false)).setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
 ];
 
 async function registerCommands() {
   const rest = new REST({ version: '10' }).setToken(BOT_TOKEN);
-  try { await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands.map(c => c.toJSON()) }); console.log('✅ Commandes enregistrées'); } catch (e) {}
+  try { await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands.map(c => c.toJSON()) }); console.log('✅ Commandes enregistrées'); } catch (e) { console.error(e); }
 }
 
 client.once('ready', async () => { console.log(`🤖 ${client.user.tag} connecté !`); await registerCommands(); });
@@ -81,13 +86,22 @@ client.on('interactionCreate', async interaction => {
     
     if (commandName === 'catalogue') {
       const categorie = options.getString('categorie');
-      const items = (await col('shop').findOne({ guildId: guild.id }))?.items || [];
-      let filtered = categorie ? items.filter(i => i.categorie?.toLowerCase() === categorie.toLowerCase()) : items;
+      const typeFilter = options.getString('type');
+      const allItems = (await col('shop').findOne({ guildId: guild.id }))?.items || [];
+      let filtered = allItems;
+      if (categorie) filtered = filtered.filter(i => i.categorie?.toLowerCase() === categorie.toLowerCase());
+      if (typeFilter) filtered = filtered.filter(i => (i.type || 'item') === typeFilter);
       if (!filtered.length) return interaction.editReply({ content: '❌ Aucun article.' });
       const byCat = {}; filtered.forEach(i => { const c = i.categorie || 'Autre'; if (!byCat[c]) byCat[c] = []; byCat[c].push(i); });
       const embed = new EmbedBuilder().setTitle('🏪 Catalogue').setColor(0x57F287);
       for (const [cat, catItems] of Object.entries(byCat)) {
-        embed.addFields({ name: `📦 ${cat}`, value: catItems.map(i => `**${i.nom}**${i.prix ? ` — ${i.prix}💰` : ''}\n> \`${i.id}\`\n> ${i.description || ''}`).join('\n\n').slice(0, 1024) });
+        const lines = catItems.map(i => {
+          let line = `**${i.nom}**${i.prix ? ` — ${i.prix}💰` : ''}\n> \`${i.id}\``;
+          if (i.type === 'voiture' && i.pack?.length) line += `\n> 📦 Pack: ${i.pack.join(', ')}`;
+          if (i.description) line += `\n> ${i.description}`;
+          return line;
+        }).join('\n\n');
+        embed.addFields({ name: `📦 ${cat}`, value: lines.slice(0, 1024) });
       }
       await interaction.editReply({ embeds: [embed] });
     }
@@ -96,12 +110,18 @@ client.on('interactionCreate', async interaction => {
       const query = options.getString('article').toLowerCase();
       const qte = options.getInteger('quantite') || 1;
       const details = options.getString('details') || '';
+      const flocage = options.getString('flocage') || '';
       const item = (await col('shop').findOne({ guildId: guild.id }))?.items?.find(i => i.id.toLowerCase() === query || i.nom.toLowerCase().includes(query));
       if (!item) return interaction.editReply({ content: '❌ Introuvable.' });
       const embed = new EmbedBuilder().setTitle('🛒 Confirmation').setColor(0xFEE75C).setDescription(`**${qte}x ${item.nom}**`).setFooter({ text: '✅ Confirmer' });
       if (item.prix) embed.addFields({ name: '💰', value: `${item.prix} 💰`, inline: true });
+      if (item.pack?.length) embed.addFields({ name: '📦 Pack inclus', value: item.pack.join(', ') });
       if (details) embed.addFields({ name: '📝', value: details });
-      const row = new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId(`confirm_${item.id}_${qte}_${details ? encodeURIComponent(details) : 'none'}`).setLabel('✅').setStyle(ButtonStyle.Success), new ButtonBuilder().setCustomId('cancel_order').setLabel('❌').setStyle(ButtonStyle.Danger));
+      if (flocage) embed.setImage(flocage);
+      const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId(`confirm_${item.id}_${qte}_${details ? encodeURIComponent(details) : 'none'}_${flocage ? encodeURIComponent(flocage) : 'none'}`).setLabel('✅').setStyle(ButtonStyle.Success),
+        new ButtonBuilder().setCustomId('cancel_order').setLabel('❌').setStyle(ButtonStyle.Danger)
+      );
       await interaction.editReply({ embeds: [embed], components: [row] });
     }
     
@@ -110,7 +130,7 @@ client.on('interactionCreate', async interaction => {
       if (!orders.length) return interaction.editReply({ content: '📭 Aucune commande.' });
       const embed = new EmbedBuilder().setTitle(`📋 ${user.username}`).setColor(0x5865F2);
       const st = { 'en_attente': '🟡 En attente', 'validee': '🟢 Validée', 'livree': '✅ Livrée', 'refusee': '🔴 Refusée' };
-      orders.forEach(o => embed.addFields({ name: `${o.orderId} — ${st[o.status] || o.status}`, value: `${o.items.map(i => `${i.quantite}x ${i.nom}`).join('\n')}${o.details ? `\n📝 ${o.details}` : ''}` }));
+      orders.forEach(o => embed.addFields({ name: `${o.orderId} — ${st[o.status] || o.status}`, value: `${o.items.map(i => `${i.quantite}x ${i.nom}`).join('\n')}${o.details ? `\n📝 ${o.details}` : ''}${o.flocage ? `\n🖼️ Flocage: ${o.flocage}` : ''}` }));
       await interaction.editReply({ embeds: [embed] });
     }
     
@@ -149,9 +169,53 @@ client.on('interactionCreate', async interaction => {
     }
     
     if (commandName === 'addarticle') {
-      const item = { id: options.getString('nom').toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + uuidv4().slice(0,4), nom: options.getString('nom'), categorie: options.getString('categorie'), description: options.getString('description') || '', image: options.getString('image') || '', createdAt: new Date().toISOString(), prix: options.getInteger('prix') || null };
+      const item = {
+        id: slugify(options.getString('nom')) + '-' + uuidv4().slice(0,4),
+        nom: options.getString('nom'),
+        categorie: options.getString('categorie'),
+        type: 'item',
+        description: options.getString('description') || '',
+        image: options.getString('image') || '',
+        createdAt: new Date().toISOString(),
+        prix: options.getInteger('prix') || null
+      };
       await col('shop').updateOne({ guildId: guild.id }, { $push: { items: item } }, { upsert: true });
       await interaction.editReply({ content: `✅ ${item.nom} ajouté (ID: \`${item.id}\`)` });
+    }
+    
+    if (commandName === 'addvoiture') {
+      const packStr = options.getString('pack') || '';
+      const pack = packStr ? packStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+      const item = {
+        id: slugify(options.getString('nom')) + '-' + uuidv4().slice(0,4),
+        nom: options.getString('nom'),
+        categorie: options.getString('categorie'),
+        type: 'voiture',
+        description: options.getString('description') || '',
+        image: options.getString('image') || '',
+        pack: pack,
+        flocageImage: options.getString('flocage') || '',
+        createdAt: new Date().toISOString(),
+        prix: options.getInteger('prix') || null
+      };
+      await col('shop').updateOne({ guildId: guild.id }, { $push: { items: item } }, { upsert: true });
+      await interaction.editReply({ content: `🚗 ${item.nom} ajoutée (ID: \`${item.id}\`)${pack.length ? `\n📦 Pack: ${pack.join(', ')}` : ''}` });
+    }
+    
+    if (commandName === 'addaccessoire') {
+      const item = {
+        id: slugify(options.getString('nom')) + '-' + uuidv4().slice(0,4),
+        nom: options.getString('nom'),
+        categorie: options.getString('categorie'),
+        type: 'accessoire',
+        description: options.getString('description') || '',
+        image: options.getString('image') || '',
+        flocageImage: options.getString('flocage') || '',
+        createdAt: new Date().toISOString(),
+        prix: options.getInteger('prix') || null
+      };
+      await col('shop').updateOne({ guildId: guild.id }, { $push: { items: item } }, { upsert: true });
+      await interaction.editReply({ content: `🔧 ${item.nom} ajouté (ID: \`${item.id}\`)` });
     }
     
     if (commandName === 'removearticle') {
@@ -165,11 +229,16 @@ client.on('interactionCreate', async interaction => {
       if (options.getInteger('prix') !== null) upd['items.$.prix'] = options.getInteger('prix');
       if (options.getString('description')) upd['items.$.description'] = options.getString('description');
       if (options.getString('categorie')) upd['items.$.categorie'] = options.getString('categorie');
+      if (options.getString('pack') !== null) {
+        const packStr = options.getString('pack');
+        upd['items.$.pack'] = packStr ? packStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+      }
+      if (options.getString('flocage') !== null) upd['items.$.flocageImage'] = options.getString('flocage');
       const r = await col('shop').updateOne({ guildId: guild.id, 'items.id': options.getString('id') }, { $set: upd });
       if (!r.modifiedCount) return interaction.editReply({ content: '❌ Introuvable.' });
       await interaction.editReply({ content: '✅ Modifié.' });
     }
-  } catch (e) { await interaction.editReply({ content: '❌ Erreur.' }).catch(() => {}); }
+  } catch (e) { console.error(e); await interaction.editReply({ content: '❌ Erreur.' }).catch(() => {}); }
 });
 
 // ─── Buttons ──────────────────────────────────────────────────────────────────
@@ -177,11 +246,26 @@ client.on('interactionCreate', async interaction => {
   if (!interaction.isButton()) return;
   if (interaction.customId === 'cancel_order') return interaction.update({ content: '❌ Annulé.', embeds: [], components: [] });
   if (interaction.customId.startsWith('confirm_')) {
-    const [, id, qte, det] = interaction.customId.split('_');
+    const parts = interaction.customId.split('_');
+    const id = parts[1];
+    const qte = parts[2];
+    const det = parts[3];
+    const floc = parts[4];
     const details = det === 'none' ? '' : decodeURIComponent(det);
+    const flocage = floc === 'none' ? '' : decodeURIComponent(floc);
     const item = (await col('shop').findOne({ guildId: interaction.guild.id }))?.items?.find(i => i.id === id);
     if (!item) return interaction.update({ content: '❌ Introuvable.', embeds: [], components: [] });
-    const order = { guildId: interaction.guild.id, orderId: generateOrderId(), userId: interaction.user.id, userTag: interaction.user.tag, items: [{ itemId: item.id, nom: item.nom, quantite: parseInt(qte) }], details, status: 'en_attente', createdAt: new Date().toISOString() };
+    const order = {
+      guildId: interaction.guild.id,
+      orderId: generateOrderId(),
+      userId: interaction.user.id,
+      userTag: interaction.user.tag,
+      items: [{ itemId: item.id, nom: item.nom, quantite: parseInt(qte), type: item.type || 'item', pack: item.pack || [] }],
+      details,
+      flocage,
+      status: 'en_attente',
+      createdAt: new Date().toISOString()
+    };
     await col('orders').insertOne(order);
     await sendWebhook(new EmbedBuilder().setTitle('🛒 Nouvelle commande').setColor(0xFEE75C).setDescription(`**${order.orderId}**`).addFields({ name: '👤', value: `<@${interaction.user.id}>` }, { name: '🛒', value: `${qte}x ${item.nom}` }));
     await interaction.update({ embeds: [new EmbedBuilder().setTitle('✅ Enregistrée').setColor(0x57F287).setDescription(`**${order.orderId}**\n${qte}x ${item.nom}`)], components: [] });
@@ -194,7 +278,7 @@ app.use(express.json());
 app.use(cors());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// API pour le panel vendeur (SANS AUTHENTIFICATION)
+// Récupérer tous les articles (avec filtre type)
 app.get('/api/orders', async (req, res) => {
   const { guild } = req.query;
   if (!guild) return res.status(400).json({ error: 'Guild ID requis' });
@@ -213,26 +297,56 @@ app.patch('/api/orders/:orderId', async (req, res) => {
 });
 
 app.get('/api/shop', async (req, res) => {
+  const { guild, type } = req.query;
+  if (!guild) return res.status(400).json({ error: 'Guild ID requis' });
+  let items = (await col('shop').findOne({ guildId: guild }))?.items || [];
+  if (type) items = items.filter(i => (i.type || 'item') === type);
+  res.json(items);
+});
+
+// Nouveaux endpoints pour voitures & accessoires
+app.get('/api/cars', async (req, res) => {
   const { guild } = req.query;
   if (!guild) return res.status(400).json({ error: 'Guild ID requis' });
-  res.json((await col('shop').findOne({ guildId: guild }))?.items || []);
+  const items = (await col('shop').findOne({ guildId: guild }))?.items || [];
+  res.json(items.filter(i => i.type === 'voiture'));
+});
+
+app.get('/api/cars/accessories', async (req, res) => {
+  const { guild } = req.query;
+  if (!guild) return res.status(400).json({ error: 'Guild ID requis' });
+  const items = (await col('shop').findOne({ guildId: guild }))?.items || [];
+  res.json(items.filter(i => i.type === 'accessoire'));
 });
 
 app.post('/api/shop', async (req, res) => {
-  const { guild, nom, categorie, prix, description, image } = req.body;
-  if (!guild) return res.status(400).json({ error: 'Guild ID requis' });
-  const item = { id: nom.toLowerCase().replace(/[^a-z0-9]/g, '-') + '-' + uuidv4().slice(0,4), nom, categorie, description: description || '', image: image || '', prix: prix || null, createdAt: new Date().toISOString() };
+  const { guild, nom, categorie, prix, description, image, type, pack, flocageImage } = req.body;
+  if (!guild || !nom || !categorie) return res.status(400).json({ error: 'Champs requis manquants' });
+  const item = {
+    id: slugify(nom) + '-' + uuidv4().slice(0,4),
+    nom, categorie,
+    type: type || 'item',
+    description: description || '',
+    image: image || '',
+    pack: Array.isArray(pack) ? pack : (pack ? pack.split(',').map(s => s.trim()).filter(Boolean) : []),
+    flocageImage: flocageImage || '',
+    prix: prix || null,
+    createdAt: new Date().toISOString()
+  };
   await col('shop').updateOne({ guildId: guild }, { $push: { items: item } }, { upsert: true });
   res.json(item);
 });
 
 app.patch('/api/shop/:itemId', async (req, res) => {
-  const { guild, prix, description, categorie } = req.body;
+  const { guild, prix, description, categorie, pack, flocageImage, type } = req.body;
   if (!guild) return res.status(400).json({ error: 'Guild ID requis' });
   const upd = {};
   if (prix !== undefined) upd['items.$.prix'] = prix;
-  if (description) upd['items.$.description'] = description;
+  if (description !== undefined) upd['items.$.description'] = description;
   if (categorie) upd['items.$.categorie'] = categorie;
+  if (pack !== undefined) upd['items.$.pack'] = Array.isArray(pack) ? pack : (pack ? pack.split(',').map(s => s.trim()).filter(Boolean) : []);
+  if (flocageImage !== undefined) upd['items.$.flocageImage'] = flocageImage;
+  if (type) upd['items.$.type'] = type;
   await col('shop').updateOne({ guildId: guild, 'items.id': req.params.itemId }, { $set: upd });
   res.json({ success: true });
 });
@@ -245,21 +359,39 @@ app.delete('/api/shop/:itemId', async (req, res) => {
 });
 
 // API publique joueurs
-app.get('/api/public/shop/:guildId', async (req, res) => res.json((await col('shop').findOne({ guildId: req.params.guildId }))?.items || []));
+app.get('/api/public/shop/:guildId', async (req, res) => {
+  const { type } = req.query;
+  let items = (await col('shop').findOne({ guildId: req.params.guildId }))?.items || [];
+  if (type) items = items.filter(i => (i.type || 'item') === type);
+  res.json(items);
+});
+
 app.get('/api/public/orders/:userId', async (req, res) => {
   const { guild } = req.query;
   if (!guild) return res.status(400).json({ error: 'Guild ID requis' });
   res.json(await col('orders').find({ guildId: guild, userId: req.params.userId }).sort({ createdAt: -1 }).limit(30).toArray());
 });
+
 app.post('/api/public/orders', async (req, res) => {
-  const { guildId, userId, items, details } = req.body;
+  const { guildId, userId, items, details, flocage } = req.body;
   if (!guildId || !userId || !items?.length) return res.status(400).json({ error: 'Données manquantes' });
-  const order = { guildId, orderId: generateOrderId(), userId, userTag: userId, items, details, status: 'en_attente', createdAt: new Date().toISOString() };
+  const order = {
+    guildId,
+    orderId: generateOrderId(),
+    userId,
+    userTag: userId,
+    items,
+    details,
+    flocage: flocage || '',
+    status: 'en_attente',
+    createdAt: new Date().toISOString()
+  };
   await col('orders').insertOne(order);
   if (ORDER_WEBHOOK) {
     try {
       const embed = new EmbedBuilder().setTitle('🛒 Nouvelle commande (Site)').setColor(0xFEE75C).setDescription(`**${order.orderId}**`).addFields({ name: '👤', value: userId }, { name: '🛒', value: items.map(i => `${i.quantite}x ${i.nom}`).join('\n') });
       if (details) embed.addFields({ name: '📝', value: details });
+      if (flocage) embed.setImage(flocage);
       await fetch(ORDER_WEBHOOK, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ embeds: [embed.toJSON()] }) });
     } catch {}
   }
